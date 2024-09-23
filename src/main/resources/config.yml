@@ -1,0 +1,94 @@
+database: #Fill this part with your DataBase datas
+  type: mysql #ALLOWED DB Type: mysql
+  mysql:
+    host: localhost
+    port: 3306
+    database: my_plugin #db name
+    username: root
+    password: password123
+catchers:
+  AnimalCatcher:  # customizable item name (you can call it however you want)
+    display_name: "Animal Catcher" # this does support Legacy and Hex colors, for more info take a look on  https://minecraft.menu/minecraft-rgb-generator
+    description:
+      empty: # lore of the empty bucket
+        - "&7Empty.. go catch something"
+      captured: # lore of the full bucket
+        - "&7Entity: &f{name}"
+        - "&7Type: &f{type}"
+        - "&7Age: &f{age}"
+        - "&7Variant: &f{variant}"
+    recipe:
+      shape:
+        - " A "
+        - " B "
+        - " C "
+      ingredients: # you can insert any kind of vanilla minecraft item
+        A: "IRON_INGOT"
+        B: "BUCKET"
+        C: "LEATHER"
+    capture: # the type of entities this bucket can catch
+      allowed_types: "ANIMAL" # you can choose between ANIMAL; MOB; ANYTHING
+      permissions: #you can choose the custom node. (pro tip: if you put a number at the end, that will give a cooldown to use the bucket)
+        capture: "entitycatcher.capture" # entitycatcher.capture.5 will set a 5 minutes cooldown to catch entities (IT ONLY WORKS IN MINUTES)
+        place: "entitycatcher.place" # entitycatcher.place.5 will set a 5 minutes cooldown to place entities (IT ONLY WORKS IN MINUTES)
+    capture_data: # Entities datas that you want to preserve in the bucket
+      capture_custom_name: true # name
+      capture_health: true # current healt of the entity
+      capture_variant: true # current variant (Axolotls colors, sheep colors, llama colors, exc)
+      capture_armor: true # horse armor, zombie armor
+      capture_equipment: true # zombie weapons, skeleton bows, exc)
+    place_behavior:
+      remove_ai: false # toggle this to true to remove totally the AI of the entities, this will result to a "statue" versione of the entity itself. The entity will result invincible!
+      set_invisible: false # do this really need to be explained?
+      set_glowing: false # do this really need to be explained?
+      set_on_fire: true # do this really need to be explained?
+      set_invincible: true # do this really need to be explained?
+
+  MobCatcher:
+    display_name: "Mob Catcher"
+    recipe:
+      shape:
+        - " A "
+        - " B "
+        - " C "
+      ingredients:
+        A: "IRON_INGOT"
+        B: "BUCKET"
+        C: "STRING"
+    capture:
+      allowed_types: "MOB"
+      permissions:
+        capture: "entitycatcher.capture"
+        place: "entitycatcher.place"
+    capture_data:
+      capture_custom_name: true
+      capture_health: true
+      capture_color: false
+      capture_equipment: true
+    place_behavior:
+      remove_ai: false
+      set_on_fire: true
+      set_glowing: false
+
+  NoAICatcher:
+    display_name: "No AI Catcher"
+    recipe:
+      shape:
+        - " A "
+        - " B "
+        - " C "
+      ingredients:
+        A: "GOLD_INGOT"
+        B: "BUCKET"
+        C: "REDSTONE"
+    capture:
+      allowed_types: "ANYTHING"
+      permissions:
+        capture: "entitycatcher.capture"
+        place: "entitycatcher.place"
+    capture_data:
+      capture_custom_name: true
+      capture_health: true
+    place_behavior:
+      remove_ai: true
+      set_glowing: true
