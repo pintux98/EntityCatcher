@@ -5,6 +5,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
@@ -41,5 +42,16 @@ public class EntityListener implements Listener {
             return;
         }
         catcherManager.handlePlace(player, bucket, catcherType);
+    }
+
+    @EventHandler
+    public void onPlayerBucketFill(PlayerBucketFillEvent event) {
+        Player player = event.getPlayer();
+        ItemStack bucket = player.getInventory().getItemInMainHand();
+        CatcherManager catcherManager = plugin.getCatcherManager();
+        CatcherType catcherType = catcherManager.getBucketTypeFromItem(bucket);
+        if (catcherType != null) {
+            event.setCancelled(true);
+        }
     }
 }
