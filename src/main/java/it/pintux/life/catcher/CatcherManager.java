@@ -1,8 +1,10 @@
 package it.pintux.life.catcher;
 
 import de.tr7zw.changeme.nbtapi.NBTItem;
+import io.papermc.paper.entity.Bucketable;
 import it.pintux.life.utils.CooldownHandler;
 import it.pintux.life.EntityCatcher;
+import it.pintux.life.utils.MessageData;
 import org.bukkit.DyeColor;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -10,6 +12,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.permissions.PermissionAttachmentInfo;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -200,15 +203,27 @@ public class CatcherManager {
 
         nbtItem.setBoolean("hasCapture", true);
 
+        ItemStack item = nbtItem.getItem();
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(MessageData.applyColor(catcherType.getDisplayName()));
+        if (!catcherType.getCaptureLore().isEmpty()) {
+            List<String> lore = new ArrayList<>();
+            catcherType.getCaptureLore().forEach(s -> lore.add(MessageData.applyColor(s).replace("{name}", entity.getName())
+                    .replace("{type}", entity.getType().toString()).replace("{age}", nbtItem.getBoolean("isBaby") ? "Baby" : "Adult")
+                    .replace("{variant}", nbtItem.getString("variant"))));
+            meta.setLore(lore);
+        }
+
+        item.setItemMeta(meta);
         entity.remove();
-        player.getInventory().setItemInMainHand(nbtItem.getItem());
+        player.getInventory().setItemInMainHand(item);
         player.sendMessage("Captured entity with " + catcherType.getDisplayName());
     }
 
 
     private boolean isAllowedEntityType(Entity entity, String allowedTypes) {
         if ("ANIMAL".equalsIgnoreCase(allowedTypes)) {
-            return entity instanceof Animals;
+            return entity instanceof Animals || entity instanceof Bucketable;
         } else if ("MOB".equalsIgnoreCase(allowedTypes)) {
             return !(entity instanceof Animals);
         } else return "ANYTHING".equalsIgnoreCase(allowedTypes);
