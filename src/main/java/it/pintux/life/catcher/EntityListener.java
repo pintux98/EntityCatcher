@@ -40,7 +40,6 @@ public class EntityListener implements Listener {
         if (catcherType == null) {
             return;
         }
-
         catcherManager.handlePlace(player, bucket, catcherType);
     }
 }

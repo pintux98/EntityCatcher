@@ -10,4 +10,4 @@ softdepend:
   - GriefPrevention
 commands:
   entitycatcher:
-    description: "Main command"
+    description: "Main command to handle the plugin"

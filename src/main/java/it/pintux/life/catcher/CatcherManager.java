@@ -138,7 +138,7 @@ public class CatcherManager {
 
         if (!canCaptureOrPlace(player, playerName, "place")) return;
 
-        if (!plugin.getProtectionManager().isProtected(player, player.getLocation())) {
+        if (plugin.getProtectionManager().isProtected(player, player.getLocation())) {
             player.sendMessage("Can't place in a protection");
             return;
         }
@@ -200,6 +200,7 @@ public class CatcherManager {
 
         nbtItem.setBoolean("hasCapture", true);
 
+        entity.remove();
         player.getInventory().setItemInMainHand(nbtItem.getItem());
         player.sendMessage("Captured entity with " + catcherType.getDisplayName());
     }
@@ -283,6 +284,7 @@ public class CatcherManager {
                 ((Horse) livingEntity).setColor(Horse.Color.valueOf(nbtItem.getString("variant")));
             }
         }
+
         player.getInventory().setItemInMainHand(catcherType.createCatcherItem());
         player.sendMessage("Placed entity using " + catcherType.getDisplayName());
     }
