@@ -7,16 +7,20 @@ database: #Fill this part with your DataBase datas
     username: root
     password: password123
 catchers:
-  AnimalCatcher:  # customizable item name (you can call it however you want)
+  AnimalCatcher: # customizable item name (you can call it however you want)
     display_name: "Animal Catcher" # this does support Legacy and Hex colors, for more info take a look on  https://minecraft.menu/minecraft-rgb-generator
     description:
-      empty: # lore of the empty bucket
-        - "&7Empty.. go catch something"
-      captured: # lore of the full bucket
-        - "&7Entity: &f{name}"
-        - "&7Type: &f{type}"
-        - "&7Age: &f{age}"
-        - "&7Variant: &f{variant}"
+      empty:
+        material: STICK #material of the empty catcher
+        lore: # lore of the empty catcher
+          - "&7Empty.. go catch something"
+      captured:
+        material: BLAZE_ROD #material of the full catcher
+        lore: # lore of the full catcher
+          - "&7Entity: &f{name}"
+          - "&7Type: &f{type}"
+          - "&7Age: &f{age}"
+          - "&7Variant: &f{variant}"
     recipe:
       shape:
         - " A "
@@ -46,6 +50,18 @@ catchers:
 
   MobCatcher:
     display_name: "Mob Catcher"
+    description:
+      empty:
+        material: STICK #material of the empty catcher
+        lore: # lore of the empty catcher
+          - "&7Empty.. go catch something"
+      captured:
+        material: BLAZE_ROD #material of the full catcher
+        lore: # lore of the full catcher
+          - "&7Entity: &f{name}"
+          - "&7Type: &f{type}"
+          - "&7Age: &f{age}"
+          - "&7Variant: &f{variant}"
     recipe:
       shape:
         - " A "
@@ -72,6 +88,18 @@ catchers:
 
   NoAICatcher:
     display_name: "No AI Catcher"
+    description:
+      empty:
+        material: STICK
+        lore:
+          - "&7Empty.. go catch something"
+      captured:
+        material: BLAZE_ROD
+        lore:
+          - "&7Entity: &f{name}"
+          - "&7Type: &f{type}"
+          - "&7Age: &f{age}"
+          - "&7Variant: &f{variant}"
     recipe:
       shape:
         - " A "

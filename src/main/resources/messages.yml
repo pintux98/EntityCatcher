@@ -1,3 +1,18 @@
 noPex: "&4Non hai il permesso per fare questo comando"
 prefix: "&x&F&B&E&C&2&AS&x&E&5&E&E&3&Ci&x&C&E&F&0&4&Em&x&B&8&F&2&6&0p&x&A&2&F&4&7&2l&x&8&C&F&6&8&4e&x&7&5&F&7&9&5G&x&5&F&F&9&A&7a&x&4&9&F&B&B&9m&x&3&2&F&D&C&Be&x&1&C&F&F&D&Ds &r> "
-error: "&4An error occured. Please contact administrator"
+
+command:
+  player_not_found: "Player not found."
+  catcher_not_found: "Catcher type not found."
+  success: "&aYou have received a {catcher_type}!"
+  reload: "&aReloaded successfully..."
+
+cooldown: "You must wait {time} seconds to {action} again."
+capture:
+  protection: "&cCan't capture in a protection"
+  full: "&cYou already have an entity captured in this catcher"
+  type_wrong: "&cYou cannot capture this type of entity with this catcher! Only works on {type}"
+  catched: "&aYou captured the entity! {entity_type}"
+place:
+  protection: "&cCan't place in a protection"
+  placed: "&aEntity placed! {entity_type}"

@@ -55,9 +55,11 @@ public class CatcherManager {
             String capturePermission = bucketConfig.getString("capture.permissions.capture", "");
             String placePermission = bucketConfig.getString("capture.permissions.place", "");
             String displayName = bucketConfig.getString("display_name", "");
-            List<String> loreEmpty = bucketConfig.getStringList("description.empty");
-            List<String> loreCaptured = bucketConfig.getStringList("description.captured");
-            CatcherType catcherType = new CatcherType(bucketKey, displayName, loreEmpty, loreCaptured, allowedTypes,
+            String emptyMaterial = bucketConfig.getString("description.empty.material", "BUCKET");
+            String fullMaterial = bucketConfig.getString("description.captured.material", "BUCKET");
+            List<String> loreEmpty = bucketConfig.getStringList("description.empty.lore");
+            List<String> loreCaptured = bucketConfig.getStringList("description.captured.lore");
+            CatcherType catcherType = new CatcherType(bucketKey, displayName, emptyMaterial, fullMaterial, loreEmpty, loreCaptured, allowedTypes,
                     captureCustomName, captureHealth, captureVariant, captureArmor, captureEquipment, removeAI,
                     setInvisible, setGlowing, setOnFire, setInvincible, shape, ingredients, capturePermission, placePermission);
             catcherTypes.put(bucketKey, catcherType);
@@ -66,7 +68,7 @@ public class CatcherManager {
     }
 
     private void registerRecipe(CatcherType catcherType) {
-        ItemStack item = catcherType.createCatcherItem();
+        ItemStack item = catcherType.createEmptyCatcherItem();
         NamespacedKey key = new NamespacedKey(plugin, catcherType.getName().toLowerCase() + "_bucket");
         ShapedRecipe recipe = new ShapedRecipe(key, item);
         recipe.shape(catcherType.getShape().get(0), catcherType.getShape().get(1), catcherType.getShape().get(2));
@@ -88,16 +90,16 @@ public class CatcherManager {
 
         NBTItem nbtItem = new NBTItem(item);
 
-        if (!nbtItem.hasKey("bucketType")) return null;
+        if (!nbtItem.hasKey("catcherType")) return null;
 
-        String bucketTypeName = nbtItem.getString("bucketType");
+        String bucketTypeName = nbtItem.getString("catcherType");
 
         return catcherTypes.get(bucketTypeName);
     }
 
     public ItemStack getBucketItem(String bucketKey) {
         CatcherType catcherType = catcherTypes.get(bucketKey);
-        return catcherType != null ? catcherType.createCatcherItem() : null;
+        return catcherType != null ? catcherType.createEmptyCatcherItem() : null;
     }
 
     public void handleCapture(Player player, Entity entity, ItemStack bucket, CatcherType catcherType) {
@@ -106,19 +108,19 @@ public class CatcherManager {
 
         if (!canCaptureOrPlace(player, playerName, "capture")) return;
         if (!plugin.getProtectionManager().isProtected(player, entity.getLocation())) {
-            player.sendMessage("Can't capture in a protection");
+            player.sendMessage(MessageData.getValue(MessageData.CAPTURE_PROTECTION));
             return;
         }
 
         NBTItem nbtItem = new NBTItem(bucket);
 
         if (nbtItem.getBoolean("hasCapture")) {
-            player.sendMessage("You already have an entity with " + catcherType.getDisplayName());
+            player.sendMessage(MessageData.getValue(MessageData.CAPTURE_FULL_CATCHER));
             return;
         }
 
         if (!isAllowedEntityType(entity, catcherType.getAllowedTypes())) {
-            player.sendMessage("You cannot capture this type of entity with " + catcherType.getDisplayName());
+            player.sendMessage(MessageData.getValue(MessageData.CAPTURE_TYPE_WRONG, Map.of("{type}", catcherType.getAllowedTypes()), player));
             return;
         }
 
@@ -127,7 +129,7 @@ public class CatcherManager {
         cooldownHandler.incrementCaptureCount(playerName);
         playerCaptureTimestamps.put(playerUUID, System.currentTimeMillis());
 
-        player.sendMessage("You captured the entity with " + catcherType.getDisplayName());
+        player.sendMessage(MessageData.getValue(MessageData.CAPTURE_CATCHED, Map.of("{entity_type}", entity.getType()), player));
     }
 
     public void handlePlace(Player player, ItemStack bucket, CatcherType catcherType) {
@@ -135,14 +137,14 @@ public class CatcherManager {
         UUID playerUUID = player.getUniqueId();
 
         Long lastCaptureTime = playerCaptureTimestamps.get(playerUUID);
-        if (lastCaptureTime != null && (System.currentTimeMillis() - lastCaptureTime) < 1000) {
+        if (lastCaptureTime != null && (System.currentTimeMillis() - lastCaptureTime) < 2000) {
             return;
         }
 
         if (!canCaptureOrPlace(player, playerName, "place")) return;
 
-        if (plugin.getProtectionManager().isProtected(player, player.getLocation())) {
-            player.sendMessage("Can't place in a protection");
+        if (!plugin.getProtectionManager().isProtected(player, player.getLocation())) {
+            player.sendMessage(MessageData.getValue(MessageData.PLACE_PROTECTION));
             return;
         }
 
@@ -155,11 +157,11 @@ public class CatcherManager {
         placeEntity(player, bucket, catcherType);
         cooldownHandler.incrementPlaceCount(playerName);
 
-        player.sendMessage("Placed entity using " + catcherType.getDisplayName());
+        player.sendMessage(MessageData.getValue(MessageData.PLACE_PLACED, Map.of("{entity_type}", nbtItem.getString("capturedEntityType")), player));
     }
 
     public void captureEntity(Player player, Entity entity, ItemStack bucket, CatcherType catcherType) {
-        NBTItem nbtItem = new NBTItem(bucket);
+        NBTItem nbtItem = new NBTItem(catcherType.createFullCatcherItem());
 
         nbtItem.setString("capturedEntityType", entity.getType().toString());
 
@@ -216,8 +218,8 @@ public class CatcherManager {
 
         item.setItemMeta(meta);
         entity.remove();
+        player.getInventory().remove(bucket);
         player.getInventory().setItemInMainHand(item);
-        player.sendMessage("Captured entity with " + catcherType.getDisplayName());
     }
 
 
@@ -300,8 +302,7 @@ public class CatcherManager {
             }
         }
 
-        player.getInventory().setItemInMainHand(catcherType.createCatcherItem());
-        player.sendMessage("Placed entity using " + catcherType.getDisplayName());
+        player.getInventory().setItemInMainHand(catcherType.createEmptyCatcherItem());
     }
 
     public long getCooldownFromPermissions(Player player, String permissionBase, String action) {
@@ -328,7 +329,7 @@ public class CatcherManager {
         long remainingCooldown = cooldownHandler.getCooldown(playerName, action);
 
         if (remainingCooldown > 0) {
-            player.sendMessage("You must wait " + (remainingCooldown / 1000) + " seconds to " + action + " again.");
+            player.sendMessage(MessageData.getValue(MessageData.COOLDOWN, Map.of("{time}", (remainingCooldown / 1000), "{action}", action), player));
             return false;
         }
         cooldownHandler.setCooldown(playerName, action.equals("capture") ? cooldownDuration : 0, action.equals("place") ? cooldownDuration : 0);

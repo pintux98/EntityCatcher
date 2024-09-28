@@ -20,7 +20,7 @@ public class ProtectionManager {
 
     public boolean isProtected(Player player, Location location) {
         for (CatcherProtection handler : handlers) {
-            return !handler.isProtected(player, location);
+            return handler.isProtected(player, location);
         }
         return true;
     }

@@ -13,6 +13,8 @@ import java.util.List;
 public class CatcherType {
     private final String name;
     private final String displayName;
+    private final String emptyMaterial;
+    private final String capturedMaterial;
     private final List<String> emptyLore;
     private final List<String> captureLore;
     private final String allowedTypes;
@@ -31,12 +33,14 @@ public class CatcherType {
     private final String capturePermission;
     private final String placePermission;
 
-    public CatcherType(String name, String displayName, List<String> emptyLore, List<String> captureLore, String allowedTypes, boolean captureCustomName, boolean captureHealth,
+    public CatcherType(String name, String displayName, String emptyMaterial, String capturedMaterial, List<String> emptyLore, List<String> captureLore, String allowedTypes, boolean captureCustomName, boolean captureHealth,
                        boolean captureVariant, boolean captureArmor, boolean captureEquipment, boolean removeAI,
                        boolean setInvisible, boolean setGlowing, boolean setOnFire, boolean setInvincible, List<String> shape,
                        ConfigurationSection ingredients, String capturePermission, String placePermission) {
         this.name = name;
         this.displayName = displayName;
+        this.emptyMaterial = emptyMaterial;
+        this.capturedMaterial = capturedMaterial;
         this.emptyLore = emptyLore;
         this.captureLore = captureLore;
         this.allowedTypes = allowedTypes;
@@ -56,18 +60,33 @@ public class CatcherType {
         this.placePermission = placePermission;
     }
 
-    public ItemStack createCatcherItem() {
-        ItemStack bucket = new ItemStack(Material.BUCKET);
+    public ItemStack createEmptyCatcherItem() {
+        ItemStack bucket = new ItemStack(getEmptyMaterial());
         ItemMeta meta = bucket.getItemMeta();
         meta.setDisplayName(MessageData.applyColor(displayName));
         if (!emptyLore.isEmpty()) {
             List<String> lore = new ArrayList<>();
-            emptyLore.forEach(s -> lore.add(MessageData.applyColor(s)));
+            emptyLore.forEach(s -> lore.add(MessageData.replaceVariables(s, null, null)));
             meta.setLore(lore);
         }
         bucket.setItemMeta(meta);
         NBTItem nbtItem = new NBTItem(bucket);
-        nbtItem.setString("bucketType", name);
+        nbtItem.setString("catcherType", name);
+        return nbtItem.getItem();
+    }
+
+    public ItemStack createFullCatcherItem() {
+        ItemStack bucket = new ItemStack(getEmptyMaterial());
+        ItemMeta meta = bucket.getItemMeta();
+        meta.setDisplayName(MessageData.applyColor(displayName));
+        if (!captureLore.isEmpty()) {
+            List<String> lore = new ArrayList<>();
+            captureLore.forEach(s -> lore.add(MessageData.applyColor(MessageData.replaceVariables(s, null, null))));
+            meta.setLore(lore);
+        }
+        bucket.setItemMeta(meta);
+        NBTItem nbtItem = new NBTItem(bucket);
+        nbtItem.setString("catcherType", name);
         return nbtItem.getItem();
     }
 
@@ -107,7 +126,9 @@ public class CatcherType {
         return setOnFire;
     }
 
-    public boolean shouldBeInvincible() {return setInvincible;}
+    public boolean shouldBeInvincible() {
+        return setInvincible;
+    }
 
     public List<String> getShape() {
         return shape;
@@ -143,5 +164,15 @@ public class CatcherType {
 
     public List<String> getCaptureLore() {
         return captureLore;
+    }
+
+    public Material getEmptyMaterial() {
+        Material mat = Material.getMaterial(emptyMaterial);
+        return mat == null ? Material.BUCKET : mat;
+    }
+
+    public Material getCapturedMaterial() {
+        Material mat = Material.getMaterial(capturedMaterial);
+        return mat == null ? Material.BUCKET : mat;
     }
 }

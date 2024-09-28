@@ -16,9 +16,18 @@ public class MessageData {
 
     private static String PREFIX = "prefix";
     public static String NO_PEX = "noPex";
-    public static String MENU_NOPEX = "menu.noPex";
-    public static String MENU_NOJAVA = "menu.noJava";
-    public static String MENU_ARGS = "menu.arguments";
+    public static String COMMAND_PLAYER_NOT_FOUND = "command.player_not_found";
+    public static String COMMAND_CATCHER_NOT_FOUND = "command.catcher_not_found";
+    public static String COMMAND_SUCCESS = "command.success";
+    public static String COMMAND_RELOAD = "command.reload";
+    public static String COOLDOWN = "cooldown";
+    public static String CAPTURE_PROTECTION = "capture.protection";
+    public static String CAPTURE_FULL_CATCHER = "capture.full";
+    public static String CAPTURE_TYPE_WRONG = "capture.type_wrong";
+    public static String CAPTURE_CATCHED = "capture.catched";
+
+    public static String PLACE_PROTECTION = "place.protection";
+    public static String PLACE_PLACED = "place.placed";
 
     private static final Pattern hexPattern = Pattern.compile("<#([A-Fa-f0-9]){6}>");
 
@@ -35,6 +44,10 @@ public class MessageData {
         String value = getValueFrom(key);
         value = replaceVariables(value, replacements, player);
         return value;
+    }
+
+    public static String getValue(String key) {
+        return getValue(key, null, null);
     }
 
     public static String getValue(String key, Map<String, Object> replacements, Player player) {
@@ -56,7 +69,7 @@ public class MessageData {
         return currentElement == null || currentElement.isBlank() ? "&aValue not found in &6messages.yml &afor &6".concat(path).concat(" &a - please add it manually with the necessary variables to fix this error") : currentElement;
     }
 
-    private static String replaceVariables(String value, Map<String, Object> replacements, Player player) {
+    public static String replaceVariables(String value, Map<String, Object> replacements, Player player) {
         if (replacements != null) {
             for (Map.Entry<String, Object> entry : replacements.entrySet()) {
                 String placeholder = "{" + entry.getKey() + "}";
