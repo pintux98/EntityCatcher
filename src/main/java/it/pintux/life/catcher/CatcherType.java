@@ -32,11 +32,12 @@ public class CatcherType {
     private final ConfigurationSection ingredients;
     private final String capturePermission;
     private final String placePermission;
+    private final double captureChance;
 
     public CatcherType(String name, String displayName, String emptyMaterial, String capturedMaterial, List<String> emptyLore, List<String> captureLore, String allowedTypes, boolean captureCustomName, boolean captureHealth,
                        boolean captureVariant, boolean captureArmor, boolean captureEquipment, boolean removeAI,
                        boolean setInvisible, boolean setGlowing, boolean setOnFire, boolean setInvincible, List<String> shape,
-                       ConfigurationSection ingredients, String capturePermission, String placePermission) {
+                       ConfigurationSection ingredients, String capturePermission, String placePermission, double captureChance) {
         this.name = name;
         this.displayName = displayName;
         this.emptyMaterial = emptyMaterial;
@@ -58,6 +59,7 @@ public class CatcherType {
         this.ingredients = ingredients;
         this.capturePermission = capturePermission;
         this.placePermission = placePermission;
+        this.captureChance = captureChance;
     }
 
     public ItemStack createEmptyCatcherItem() {
@@ -76,7 +78,7 @@ public class CatcherType {
     }
 
     public ItemStack createFullCatcherItem() {
-        ItemStack bucket = new ItemStack(getEmptyMaterial());
+        ItemStack bucket = new ItemStack(getCapturedMaterial());
         ItemMeta meta = bucket.getItemMeta();
         meta.setDisplayName(MessageData.applyColor(displayName));
         if (!captureLore.isEmpty()) {
@@ -174,5 +176,9 @@ public class CatcherType {
     public Material getCapturedMaterial() {
         Material mat = Material.getMaterial(capturedMaterial);
         return mat == null ? Material.BUCKET : mat;
+    }
+
+    public double getCaptureChance() {
+        return captureChance;
     }
 }

@@ -2,7 +2,6 @@ package it.pintux.life.utils;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -40,9 +39,9 @@ public class DatabaseManager {
             hikariConfig.setMaxLifetime(1800000);
 
             this.dataSource = new HikariDataSource(hikariConfig);
-            Bukkit.getLogger().info("Hikari pool created");
+            plugin.getLogger().info("Hikari pool created");
         } else {
-            Bukkit.getLogger().severe("Unsupported database type! Please use either 'mysql' or 'h2'.");
+            plugin.getLogger().severe("Unsupported database type! Only 'mysql' is supported.");
         }
     }
 

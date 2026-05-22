@@ -19,8 +19,13 @@ public class ProtectionManager {
     }
 
     public boolean isProtected(Player player, Location location) {
+        if (handlers.isEmpty()) {
+            return true;
+        }
         for (CatcherProtection handler : handlers) {
-            return handler.isProtected(player, location);
+            if (!handler.isProtected(player, location)) {
+                return false;
+            }
         }
         return true;
     }

@@ -13,7 +13,7 @@ import org.bukkit.entity.Player;
 public class WorldGuardProtection implements CatcherProtection {
     @Override
     public boolean isProtected(Player player, Location location) {
-        com.sk89q.worldedit.util.Location loc = new com.sk89q.worldedit.util.Location(BukkitAdapter.adapt(location).getExtent(), BukkitAdapter.adapt(location).toVector()); // can also be adapted from Bukkit, as mentioned above
+        com.sk89q.worldedit.util.Location loc = BukkitAdapter.adapt(location);
         RegionContainer container = WorldGuard.getInstance().getPlatform().getRegionContainer();
         RegionQuery query = container.createQuery();
         ApplicableRegionSet set = query.getApplicableRegions(loc);

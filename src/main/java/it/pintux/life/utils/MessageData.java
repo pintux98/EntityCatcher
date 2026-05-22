@@ -26,8 +26,20 @@ public class MessageData {
     public static String CAPTURE_TYPE_WRONG = "capture.type_wrong";
     public static String CAPTURE_CATCHED = "capture.catched";
 
+    public static String CAPTURE_EXCLUDED = "capture.excluded";
+
+    public static String CAPTURE_WORLD_DISABLED = "capture.world_disabled";
+
+    public static String CAPTURE_FAILED_CHANCE = "capture.failed_chance";
+
+    public static String COLLECTION_TITLE = "collection.title";
+
     public static String PLACE_PROTECTION = "place.protection";
     public static String PLACE_PLACED = "place.placed";
+
+    public static String STATS_HEADER = "stats.header";
+    public static String STATS_CAPTURES = "stats.captures";
+    public static String STATS_PLACES = "stats.places";
 
     private static final Pattern hexPattern = Pattern.compile("<#([A-Fa-f0-9]){6}>");
 
@@ -72,17 +84,11 @@ public class MessageData {
     public static String replaceVariables(String value, Map<String, Object> replacements, Player player) {
         if (replacements != null) {
             for (Map.Entry<String, Object> entry : replacements.entrySet()) {
-                String placeholder = "{" + entry.getKey() + "}";
-                value = value.replace(placeholder, String.valueOf(entry.getValue()));
+                value = value.replace(entry.getKey(), String.valueOf(entry.getValue()));
             }
         }
-        if (plugin.isPlaceholderAPI()) {
+        if (plugin != null && plugin.isPlaceholderAPI()) {
             value = PlaceholderAPI.setPlaceholders(player, value);
-        }
-        Matcher matcher = Pattern.compile("\\{(\\w+)}").matcher(value);
-        while (matcher.find()) {
-            String placeholder = matcher.group(1);
-            System.out.println("Missing replacement value for placeholder: " + placeholder);
         }
         return value;
     }

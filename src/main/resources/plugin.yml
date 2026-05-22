@@ -1,13 +1,17 @@
 name: EntityCatcher
 version: '1.0-SNAPSHOT'
 main: it.pintux.life.EntityCatcher
-api-version: '1.19'
+api-version: '1.20'
 authors: [ pintux ]
 description: Simple catcher plugin
 softdepend:
   - HuskClaims
   - WorldGuard
   - GriefPrevention
+  - Lands
+  - MythicMobs
+  - Citizens
+  - PlaceholderAPI
 commands:
   entitycatcher:
     description: "Main command to handle the plugin"

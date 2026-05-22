@@ -13,6 +13,17 @@ capture:
   full: "&cYou already have an entity captured in this catcher"
   type_wrong: "&cYou cannot capture this type of entity with this catcher! Only works on {type}"
   catched: "&aYou captured the entity! {entity_type}"
+  excluded: "&cThis entity cannot be captured."
+  world_disabled: "&cCatching is disabled in this world."
+  failed_chance: "&cCapture failed! The entity escaped. ({chance}% chance)"
 place:
   protection: "&cCan't place in a protection"
   placed: "&aEntity placed! {entity_type}"
+
+stats:
+  header: "&6--- EntityCatcher Stats ---"
+  captures: "&7Total captures: &f{count}"
+  places: "&7Total places: &f{count}"
+
+collection:
+  title: "&6&lCollection"

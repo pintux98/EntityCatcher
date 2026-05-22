@@ -1,22 +1,40 @@
-database: #Fill this part with your DataBase datas
-  type: mysql #ALLOWED DB Type: mysql
+database:
+  type: mysql
   mysql:
     host: localhost
     port: 3306
-    database: my_plugin #db name
+    database: entitycatcher
     username: root
     password: password123
+
+exclusions:
+  mythicmobs:
+    # Set to true to prevent capture of specific MythicMobs types
+    # Use "*" to deny ALL MythicMobs
+    AncientDragon: true
+    SkeletonKing: true
+    CustomZombieBoss: true
+
+  # Catcher types that bypass the MythicMobs/Citizens exclusion
+  bypass_catchers:
+    - BossCatcher
+
+  # Worlds where catching is completely disabled
+  disabled_worlds:
+    - world_nether
+    - world_the_end
+
 catchers:
-  AnimalCatcher: # customizable item name (you can call it however you want)
-    display_name: "Animal Catcher" # this does support Legacy and Hex colors, for more info take a look on  https://minecraft.menu/minecraft-rgb-generator
+  AnimalCatcher:
+    display_name: "Animal Catcher"
     description:
       empty:
-        material: STICK #material of the empty catcher
-        lore: # lore of the empty catcher
+        material: STICK
+        lore:
           - "&7Empty.. go catch something"
       captured:
-        material: BLAZE_ROD #material of the full catcher
-        lore: # lore of the full catcher
+        material: BLAZE_ROD
+        lore:
           - "&7Entity: &f{name}"
           - "&7Type: &f{type}"
           - "&7Age: &f{age}"
@@ -26,38 +44,39 @@ catchers:
         - " A "
         - " B "
         - " C "
-      ingredients: # you can insert any kind of vanilla minecraft item
+      ingredients:
         A: "IRON_INGOT"
         B: "BUCKET"
         C: "LEATHER"
-    capture: # the type of entities this bucket can catch
-      allowed_types: "ANIMAL" # you can choose between ANIMAL; MOB; ANYTHING
-      permissions: #you can choose the custom node. (pro tip: if you put a number at the end, that will give a cooldown to use the bucket)
-        capture: "entitycatcher.capture" # entitycatcher.capture.5 will set a 5 minutes cooldown to catch entities (IT ONLY WORKS IN MINUTES)
-        place: "entitycatcher.place" # entitycatcher.place.5 will set a 5 minutes cooldown to place entities (IT ONLY WORKS IN MINUTES)
-    capture_data: # Entities datas that you want to preserve in the bucket
-      capture_custom_name: true # name
-      capture_health: true # current healt of the entity
-      capture_variant: true # current variant (Axolotls colors, sheep colors, llama colors, exc)
-      capture_armor: true # horse armor, zombie armor
-      capture_equipment: true # zombie weapons, skeleton bows, exc)
+    capture:
+      allowed_types: "ANIMAL"
+      capture_chance: 1.0
+      permissions:
+        capture: "entitycatcher.capture"
+        place: "entitycatcher.place"
+    capture_data:
+      capture_custom_name: true
+      capture_health: true
+      capture_variant: true
+      capture_armor: true
+      capture_equipment: true
     place_behavior:
-      remove_ai: false # toggle this to true to remove totally the AI of the entities, this will result to a "statue" versione of the entity itself. The entity will result invincible!
-      set_invisible: false # do this really need to be explained?
-      set_glowing: false # do this really need to be explained?
-      set_on_fire: true # do this really need to be explained?
-      set_invincible: true # do this really need to be explained?
+      remove_ai: false
+      set_invisible: false
+      set_glowing: false
+      set_on_fire: false
+      set_invincible: false
 
   MobCatcher:
     display_name: "Mob Catcher"
     description:
       empty:
-        material: STICK #material of the empty catcher
-        lore: # lore of the empty catcher
+        material: STICK
+        lore:
           - "&7Empty.. go catch something"
       captured:
-        material: BLAZE_ROD #material of the full catcher
-        lore: # lore of the full catcher
+        material: BLAZE_ROD
+        lore:
           - "&7Entity: &f{name}"
           - "&7Type: &f{type}"
           - "&7Age: &f{age}"
@@ -73,18 +92,22 @@ catchers:
         C: "STRING"
     capture:
       allowed_types: "MOB"
+      capture_chance: 1.0
       permissions:
         capture: "entitycatcher.capture"
         place: "entitycatcher.place"
     capture_data:
       capture_custom_name: true
       capture_health: true
-      capture_color: false
+      capture_variant: false
+      capture_armor: false
       capture_equipment: true
     place_behavior:
       remove_ai: false
-      set_on_fire: true
+      set_invisible: false
       set_glowing: false
+      set_on_fire: false
+      set_invincible: false
 
   NoAICatcher:
     display_name: "No AI Catcher"
@@ -111,12 +134,62 @@ catchers:
         C: "REDSTONE"
     capture:
       allowed_types: "ANYTHING"
+      capture_chance: 1.0
       permissions:
         capture: "entitycatcher.capture"
         place: "entitycatcher.place"
     capture_data:
       capture_custom_name: true
       capture_health: true
+      capture_variant: false
+      capture_armor: false
+      capture_equipment: false
     place_behavior:
       remove_ai: true
+      set_invisible: false
       set_glowing: true
+      set_on_fire: false
+      set_invincible: false
+
+  BossCatcher:
+    display_name: "&6&lBoss Catcher"
+    description:
+      empty:
+        material: NETHER_STAR
+        lore:
+          - "&e&lA powerful catcher"
+          - "&7Can capture &6bosses &7and denylisted mobs"
+      captured:
+        material: NETHER_STAR
+        lore:
+          - "&7Entity: &f{name}"
+          - "&7Type: &f{type}"
+          - "&7Age: &f{age}"
+          - "&7Variant: &f{variant}"
+    recipe:
+      shape:
+        - "ABA"
+        - "BCB"
+        - "ABA"
+      ingredients:
+        A: "NETHERITE_INGOT"
+        B: "END_CRYSTAL"
+        C: "BUCKET"
+    capture:
+      allowed_types: "ANYTHING"
+      capture_chance: 0.25
+      permissions:
+        capture: "entitycatcher.boss.capture"
+        place: "entitycatcher.boss.place"
+    capture_data:
+      capture_custom_name: true
+      capture_health: true
+      capture_variant: true
+      capture_armor: true
+      capture_equipment: true
+    place_behavior:
+      remove_ai: false
+      set_invisible: false
+      set_glowing: false
+      set_on_fire: false
+      set_invincible: false

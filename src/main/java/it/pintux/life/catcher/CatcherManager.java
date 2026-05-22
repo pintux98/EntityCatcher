@@ -10,6 +10,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.*;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -18,19 +19,19 @@ import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
 public class CatcherManager {
+    private static final long ANTI_EXPLOIT_THRESHOLD_MS = 2000;
+
     private final EntityCatcher plugin;
     private final Map<String, CatcherType> catcherTypes;
-    private final Map<UUID, Long> playerCaptureTimestamps;
     private final CooldownHandler cooldownHandler;
 
     public CatcherManager(EntityCatcher plugin) {
         this.plugin = plugin;
         this.cooldownHandler = plugin.getCooldownHandler();
         this.catcherTypes = new HashMap<>();
-        this.playerCaptureTimestamps = new ConcurrentHashMap<>();
         loadBucketTypes();
     }
 
@@ -54,6 +55,7 @@ public class CatcherManager {
             ConfigurationSection ingredients = bucketConfig.getConfigurationSection("recipe.ingredients");
             String capturePermission = bucketConfig.getString("capture.permissions.capture", "");
             String placePermission = bucketConfig.getString("capture.permissions.place", "");
+            double captureChance = bucketConfig.getDouble("capture.capture_chance", 1.0);
             String displayName = bucketConfig.getString("display_name", "");
             String emptyMaterial = bucketConfig.getString("description.empty.material", "BUCKET");
             String fullMaterial = bucketConfig.getString("description.captured.material", "BUCKET");
@@ -61,7 +63,7 @@ public class CatcherManager {
             List<String> loreCaptured = bucketConfig.getStringList("description.captured.lore");
             CatcherType catcherType = new CatcherType(bucketKey, displayName, emptyMaterial, fullMaterial, loreEmpty, loreCaptured, allowedTypes,
                     captureCustomName, captureHealth, captureVariant, captureArmor, captureEquipment, removeAI,
-                    setInvisible, setGlowing, setOnFire, setInvincible, shape, ingredients, capturePermission, placePermission);
+                    setInvisible, setGlowing, setOnFire, setInvincible, shape, ingredients, capturePermission, placePermission, captureChance);
             catcherTypes.put(bucketKey, catcherType);
             registerRecipe(catcherType);
         }
@@ -103,10 +105,27 @@ public class CatcherManager {
     }
 
     public void handleCapture(Player player, Entity entity, ItemStack bucket, CatcherType catcherType) {
-        String playerName = player.getName();
         UUID playerUUID = player.getUniqueId();
 
-        if (!canCaptureOrPlace(player, playerName, "capture")) return;
+        if (isWorldDisabled(player.getWorld().getName())) {
+            player.sendMessage(MessageData.getValue(MessageData.CAPTURE_WORLD_DISABLED));
+            return;
+        }
+
+        boolean bypassExclusion = isBypassCatcher(catcherType.getName());
+        if (!bypassExclusion && plugin.getEntityExclusionManager().isExcluded(entity)) {
+            player.sendMessage(MessageData.getValue(MessageData.CAPTURE_EXCLUDED));
+            return;
+        }
+
+        String capturePerm = catcherType.getCapturePermission();
+        if (!capturePerm.isEmpty() && !player.hasPermission(capturePerm)) {
+            player.sendMessage(MessageData.getValue(MessageData.NO_PEX));
+            return;
+        }
+
+        if (!canCaptureOrPlace(player, playerUUID, "capture")) return;
+
         if (!plugin.getProtectionManager().isProtected(player, entity.getLocation())) {
             player.sendMessage(MessageData.getValue(MessageData.CAPTURE_PROTECTION));
             return;
@@ -124,24 +143,36 @@ public class CatcherManager {
             return;
         }
 
-        captureEntity(player, entity, bucket, catcherType);
-
-        cooldownHandler.incrementCaptureCount(playerName);
-        playerCaptureTimestamps.put(playerUUID, System.currentTimeMillis());
-
-        player.sendMessage(MessageData.getValue(MessageData.CAPTURE_CATCHED, Map.of("{entity_type}", entity.getType()), player));
-    }
-
-    public void handlePlace(Player player, ItemStack bucket, CatcherType catcherType) {
-        String playerName = player.getName();
-        UUID playerUUID = player.getUniqueId();
-
-        Long lastCaptureTime = playerCaptureTimestamps.get(playerUUID);
-        if (lastCaptureTime != null && (System.currentTimeMillis() - lastCaptureTime) < 2000) {
+        double chance = catcherType.getCaptureChance();
+        if (chance < 1.0 && Math.random() > chance) {
+            player.sendMessage(MessageData.getValue(MessageData.CAPTURE_FAILED_CHANCE, Map.of("{chance}", (int) (chance * 100)), player));
             return;
         }
 
-        if (!canCaptureOrPlace(player, playerName, "place")) return;
+        captureEntity(player, entity, bucket, catcherType);
+
+        cooldownHandler.incrementCaptureCount(playerUUID);
+        cooldownHandler.recordActionTime(playerUUID, "capture");
+        cooldownHandler.recordCapture(playerUUID, entity.getType().toString(), entity.getCustomName(), catcherType.getName(), player.getWorld().getName());
+
+        player.sendMessage(MessageData.getValue(MessageData.CAPTURE_CATCHED, Map.of("{entity_type}", entity.getType().toString()), player));
+    }
+
+    public void handlePlace(Player player, ItemStack bucket, CatcherType catcherType) {
+        UUID playerUUID = player.getUniqueId();
+
+        if (cooldownHandler.isActionTooRecent(playerUUID, "capture", ANTI_EXPLOIT_THRESHOLD_MS)) {
+            player.sendMessage(MessageData.getValue(MessageData.COOLDOWN, Map.of("{time}", 2, "{action}", "place"), player));
+            return;
+        }
+
+        String placePerm = catcherType.getPlacePermission();
+        if (!placePerm.isEmpty() && !player.hasPermission(placePerm)) {
+            player.sendMessage(MessageData.getValue(MessageData.NO_PEX));
+            return;
+        }
+
+        if (!canCaptureOrPlace(player, playerUUID, "place")) return;
 
         if (!plugin.getProtectionManager().isProtected(player, player.getLocation())) {
             player.sendMessage(MessageData.getValue(MessageData.PLACE_PROTECTION));
@@ -155,7 +186,8 @@ public class CatcherManager {
         }
 
         placeEntity(player, bucket, catcherType);
-        cooldownHandler.incrementPlaceCount(playerName);
+        cooldownHandler.incrementPlaceCount(playerUUID);
+        cooldownHandler.recordActionTime(playerUUID, "place");
 
         player.sendMessage(MessageData.getValue(MessageData.PLACE_PLACED, Map.of("{entity_type}", nbtItem.getString("capturedEntityType")), player));
     }
@@ -178,17 +210,23 @@ public class CatcherManager {
         }
 
         if (catcherType.shouldCaptureArmor() && entity instanceof LivingEntity) {
-            ItemStack[] armorContents = ((LivingEntity) entity).getEquipment().getArmorContents();
-            for (int i = 0; i < armorContents.length; i++) {
-                nbtItem.setItemStack("armor_" + i, armorContents[i]);
+            org.bukkit.inventory.EntityEquipment equipment = ((LivingEntity) entity).getEquipment();
+            if (equipment != null) {
+                ItemStack[] armorContents = equipment.getArmorContents();
+                for (int i = 0; i < armorContents.length; i++) {
+                    nbtItem.setItemStack("armor_" + i, armorContents[i]);
+                }
             }
         }
 
         if (catcherType.shouldCaptureEquipment() && entity instanceof LivingEntity) {
-            ItemStack mainHand = ((LivingEntity) entity).getEquipment().getItemInMainHand();
-            ItemStack offHand = ((LivingEntity) entity).getEquipment().getItemInOffHand();
-            nbtItem.setItemStack("mainHand", mainHand);
-            nbtItem.setItemStack("offHand", offHand);
+            org.bukkit.inventory.EntityEquipment equipment = ((LivingEntity) entity).getEquipment();
+            if (equipment != null) {
+                ItemStack mainHand = equipment.getItemInMainHand();
+                ItemStack offHand = equipment.getItemInOffHand();
+                nbtItem.setItemStack("mainHand", mainHand);
+                nbtItem.setItemStack("offHand", offHand);
+            }
         }
 
         if (entity instanceof Ageable) {
@@ -222,7 +260,6 @@ public class CatcherManager {
         player.getInventory().setItemInMainHand(item);
     }
 
-
     private boolean isAllowedEntityType(Entity entity, String allowedTypes) {
         if ("ANIMAL".equalsIgnoreCase(allowedTypes)) {
             return entity instanceof Animals || entity instanceof Bucketable;
@@ -231,10 +268,28 @@ public class CatcherManager {
         } else return "ANYTHING".equalsIgnoreCase(allowedTypes);
     }
 
+    private boolean isWorldDisabled(String worldName) {
+        List<String> disabledWorlds = plugin.getConfig().getStringList("exclusions.disabled_worlds");
+        return disabledWorlds.contains(worldName);
+    }
+
+    private boolean isBypassCatcher(String catcherName) {
+        List<String> bypassCatchers = plugin.getConfig().getStringList("exclusions.bypass_catchers");
+        return bypassCatchers.contains(catcherName);
+    }
+
     public void placeEntity(Player player, ItemStack bucket, CatcherType catcherType) {
         NBTItem nbtItem = new NBTItem(bucket);
 
-        Entity spawnedEntity = player.getWorld().spawnEntity(player.getLocation(), EntityType.valueOf(nbtItem.getString("capturedEntityType")));
+        EntityType entityType;
+        try {
+            entityType = EntityType.valueOf(nbtItem.getString("capturedEntityType"));
+        } catch (IllegalArgumentException e) {
+            player.sendMessage(MessageData.getValue(MessageData.COMMAND_CATCHER_NOT_FOUND));
+            return;
+        }
+
+        Entity spawnedEntity = player.getWorld().spawnEntity(player.getLocation(), entityType);
 
         if (spawnedEntity instanceof LivingEntity) {
             LivingEntity livingEntity = (LivingEntity) spawnedEntity;
@@ -272,16 +327,22 @@ public class CatcherManager {
             }
 
             if (catcherType.shouldCaptureArmor()) {
-                ItemStack[] armorContents = new ItemStack[4];
-                for (int i = 0; i < 4; i++) {
-                    armorContents[i] = nbtItem.getItemStack("armor_" + i);
+                org.bukkit.inventory.EntityEquipment equipment = livingEntity.getEquipment();
+                if (equipment != null) {
+                    ItemStack[] armorContents = new ItemStack[4];
+                    for (int i = 0; i < 4; i++) {
+                        armorContents[i] = nbtItem.getItemStack("armor_" + i);
+                    }
+                    equipment.setArmorContents(armorContents);
                 }
-                livingEntity.getEquipment().setArmorContents(armorContents);
             }
 
             if (catcherType.shouldCaptureEquipment()) {
-                livingEntity.getEquipment().setItemInMainHand(nbtItem.getItemStack("mainHand"));
-                livingEntity.getEquipment().setItemInOffHand(nbtItem.getItemStack("offHand"));
+                org.bukkit.inventory.EntityEquipment equipment = livingEntity.getEquipment();
+                if (equipment != null) {
+                    equipment.setItemInMainHand(nbtItem.getItemStack("mainHand"));
+                    equipment.setItemInOffHand(nbtItem.getItemStack("offHand"));
+                }
             }
 
             if (spawnedEntity instanceof Ageable && nbtItem.hasKey("isBaby")) {
@@ -321,18 +382,21 @@ public class CatcherManager {
             }
         }
 
-        return maxCooldown > 0 ? maxCooldown * 60 * 1000L : 0;  // Convert to milliseconds
+        return maxCooldown > 0 ? maxCooldown * 60 * 1000L : 0;
     }
 
-    public boolean canCaptureOrPlace(Player player, String playerName, String action) {
-        long cooldownDuration = getCooldownFromPermissions(player, "mobbucket", action);
-        long remainingCooldown = cooldownHandler.getCooldown(playerName, action);
+    public boolean canCaptureOrPlace(Player player, UUID playerUUID, String action) {
+        if (player.hasPermission("entitycatcher.bypass.cooldown")) {
+            return true;
+        }
+        long cooldownDuration = getCooldownFromPermissions(player, "entitycatcher", action);
+        long remainingCooldown = cooldownHandler.getCooldown(playerUUID, action);
 
         if (remainingCooldown > 0) {
             player.sendMessage(MessageData.getValue(MessageData.COOLDOWN, Map.of("{time}", (remainingCooldown / 1000), "{action}", action), player));
             return false;
         }
-        cooldownHandler.setCooldown(playerName, action.equals("capture") ? cooldownDuration : 0, action.equals("place") ? cooldownDuration : 0);
+        cooldownHandler.setCooldown(playerUUID, action.equals("capture") ? cooldownDuration : 0, action.equals("place") ? cooldownDuration : 0);
         return true;
     }
 
