@@ -45,7 +45,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:1.20.6-R0.1-SNAPSHOT")
     compileOnly 'me.clip:placeholderapi:2.11.6'
     implementation 'de.tr7zw:item-nbt-api:2.15.7'
     implementation 'com.zaxxer:HikariCP:6.2.1'
@@ -62,7 +62,7 @@ dependencies {
     }
 }
 
-def targetJavaVersion = 17
+def targetJavaVersion = 21
 java {
     def javaVersion = JavaVersion.toVersion(targetJavaVersion)
     sourceCompatibility = javaVersion
@@ -91,14 +91,10 @@ processResources {
 
 shadowJar {
     relocate("de.tr7zw.changeme.nbtapi", "it.pintux.life.nbtapi")
-    // Keep the whole SQLite driver: it is loaded via ServiceLoader/reflection, so
-    // minimize() would otherwise strip its classes and META-INF/services.
     minimize {
         exclude(dependency('org.xerial:sqlite-jdbc:.*'))
     }
     archiveClassifier = null
-    // Only copy into the local test server when that path actually exists,
-    // so the build still works on other machines.
     def serverPlugins = file('C:\\Users\\pintu\\Desktop\\Server\\Java-Bedrock-Server\\lobby\\plugins')
     if (serverPlugins.exists()) {
         destinationDirectory.set(serverPlugins)

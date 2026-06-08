@@ -8,6 +8,9 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,6 +23,12 @@ public class MessageData {
     public static String COMMAND_CATCHER_NOT_FOUND = "command.catcher_not_found";
     public static String COMMAND_SUCCESS = "command.success";
     public static String COMMAND_RELOAD = "command.reload";
+    public static String COMMAND_USAGE_MAIN = "command.usage_main";
+    public static String COMMAND_USAGE_GIVE = "command.usage_give";
+    public static String COMMAND_USAGE_GIVEALL = "command.usage_giveall";
+    public static String COMMAND_USAGE_STATS = "command.usage_stats";
+    public static String COMMAND_INVALID_AMOUNT = "command.invalid_amount";
+    public static String COMMAND_PLAYERS_ONLY = "command.players_only";
     public static String COOLDOWN = "cooldown";
     public static String CAPTURE_PROTECTION = "capture.protection";
     public static String CAPTURE_FULL_CATCHER = "capture.full";
@@ -33,6 +42,10 @@ public class MessageData {
     public static String CAPTURE_FAILED_CHANCE = "capture.failed_chance";
 
     public static String COLLECTION_TITLE = "collection.title";
+    public static String COLLECTION_INFO_NAME = "collection.info_name";
+    public static String COLLECTION_INFO_LORE = "collection.info_lore";
+    public static String COLLECTION_ENTRY_NAME = "collection.entry_name";
+    public static String COLLECTION_ENTRY_LORE = "collection.entry_lore";
 
     public static String PLACE_PROTECTION = "place.protection";
     public static String PLACE_PLACED = "place.placed";
@@ -60,6 +73,22 @@ public class MessageData {
 
     public static String getValue(String key) {
         return getValue(key, null, null);
+    }
+
+    /**
+     * Returns a configurable list of lines (e.g. GUI lore), color- and
+     * placeholder-resolved. Empty list if the key is missing.
+     */
+    public static List<String> getList(String key, Map<String, Object> replacements, Player player) {
+        if (config == null) {
+            return Collections.emptyList();
+        }
+        List<String> raw = config.getStringList(key);
+        List<String> out = new ArrayList<>(raw.size());
+        for (String line : raw) {
+            out.add(applyColor(replaceVariables(line, replacements, player)));
+        }
+        return out;
     }
 
     public static String getValue(String key, Map<String, Object> replacements, Player player) {

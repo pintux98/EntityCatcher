@@ -131,20 +131,6 @@ public class CooldownHandler {
         }
     }
 
-    public void removeCooldown(UUID playerUUID, String type) {
-        if (dataSource == null) {
-            return;
-        }
-        String column = type + "_cooldown";
-        String sql = "UPDATE " + tableName + " SET " + column + " = 0 WHERE player_uuid = ?";
-        try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, playerUUID.toString());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to remove cooldown for {0}", playerUUID);
-        }
-    }
-
     /**
      * Records the current time as the last capture/place action for cross-server anti-exploit.
      * Kept synchronous: the place handler reads this immediately after a capture.
@@ -245,10 +231,6 @@ public class CooldownHandler {
 
     public void closeConnection() {
         databaseManager.close();
-    }
-
-    public HikariDataSource getDataSource() {
-        return dataSource;
     }
 
     private void createHistoryTable() {

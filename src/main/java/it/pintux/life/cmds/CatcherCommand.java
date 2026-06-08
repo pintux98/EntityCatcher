@@ -32,7 +32,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
         if (command.getName().equalsIgnoreCase("entitycatcher")) {
 
             if (args.length == 0) {
-                sender.sendMessage("Usage: /entitycatcher <give | giveall | reload | stats | collection>");
+                sender.sendMessage(MessageData.getValue(MessageData.COMMAND_USAGE_MAIN, null, asPlayer(sender)));
                 return true;
             }
 
@@ -43,7 +43,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                 }
 
                 if (args.length < 3) {
-                    sender.sendMessage("Usage: /entitycatcher give <player> <type> [amount]");
+                    sender.sendMessage(MessageData.getValue(MessageData.COMMAND_USAGE_GIVE, null, asPlayer(sender)));
                     return true;
                 }
 
@@ -65,7 +65,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                     try {
                         amount = Integer.parseInt(args[3]);
                     } catch (NumberFormatException e) {
-                        sender.sendMessage("Invalid amount: " + args[3]);
+                        sender.sendMessage(MessageData.getValue(MessageData.COMMAND_INVALID_AMOUNT, Map.of("{amount}", args[3]), asPlayer(sender)));
                         return true;
                     }
                     if (amount <= 0) {
@@ -85,7 +85,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                 }
 
                 if (args.length < 2) {
-                    sender.sendMessage("Usage: /entitycatcher giveall <type> [amount]");
+                    sender.sendMessage(MessageData.getValue(MessageData.COMMAND_USAGE_GIVEALL, null, asPlayer(sender)));
                     return true;
                 }
 
@@ -101,7 +101,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                     try {
                         amount = Integer.parseInt(args[2]);
                     } catch (NumberFormatException e) {
-                        sender.sendMessage("Invalid amount: " + args[2]);
+                        sender.sendMessage(MessageData.getValue(MessageData.COMMAND_INVALID_AMOUNT, Map.of("{amount}", args[2]), asPlayer(sender)));
                         return true;
                     }
                     if (amount <= 0) {
@@ -140,7 +140,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                 } else if (sender instanceof Player) {
                     targetPlayer = (Player) sender;
                 } else {
-                    sender.sendMessage("Usage: /entitycatcher stats [player]");
+                    sender.sendMessage(MessageData.getValue(MessageData.COMMAND_USAGE_STATS, null, asPlayer(sender)));
                     return true;
                 }
 
@@ -154,7 +154,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
 
             } else if (args[0].equalsIgnoreCase("collection")) {
                 if (!(sender instanceof Player)) {
-                    sender.sendMessage("This command can only be used by players.");
+                    sender.sendMessage(MessageData.getValue(MessageData.COMMAND_PLAYERS_ONLY, null, null));
                     return true;
                 }
                 Player viewer = (Player) sender;
@@ -175,7 +175,7 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                 plugin.getCollectionGUI().open(viewer, targetPlayer);
 
             } else {
-                sender.sendMessage("Usage: /entitycatcher <give | giveall | reload | stats | collection>");
+                sender.sendMessage(MessageData.getValue(MessageData.COMMAND_USAGE_MAIN, null, asPlayer(sender)));
             }
             return true;
         }
@@ -188,6 +188,10 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
      * before (data is keyed by UUID, so stats/collection work for offline players).
      * Returns null for names that have never been seen.
      */
+    private Player asPlayer(CommandSender sender) {
+        return sender instanceof Player ? (Player) sender : null;
+    }
+
     @SuppressWarnings("deprecation")
     private OfflinePlayer resolveOffline(String name) {
         Player online = Bukkit.getPlayerExact(name);

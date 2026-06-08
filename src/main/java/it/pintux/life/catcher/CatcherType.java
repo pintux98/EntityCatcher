@@ -160,10 +160,6 @@ public class CatcherType {
         return displayName;
     }
 
-    public List<String> getEmptyLore() {
-        return emptyLore;
-    }
-
     public List<String> getCaptureLore() {
         return captureLore;
     }

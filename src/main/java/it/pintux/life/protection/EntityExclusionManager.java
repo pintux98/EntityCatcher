@@ -40,20 +40,4 @@ public class EntityExclusionManager {
 
         return false;
     }
-
-    public String getExclusionReason(Entity entity) {
-        if (citizensAvailable && CitizensAPI.getNPCRegistry() != null
-                && CitizensAPI.getNPCRegistry().isNPC(entity)) {
-            return "NPC";
-        }
-
-        if (mythicMobsAvailable && mythicHelper != null && mythicHelper.isMythicMob(entity)) {
-            String mobType = mythicHelper.getMythicMobInstance(entity).getMobType();
-            if (denylistedMythicMobs.contains("*") || denylistedMythicMobs.contains(mobType)) {
-                return "MythicMob:" + mobType;
-            }
-        }
-
-        return null;
-    }
 }

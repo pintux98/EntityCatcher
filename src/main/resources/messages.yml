@@ -6,6 +6,12 @@ command:
   catcher_not_found: "Catcher type not found."
   success: "&aYou have received a {catcher_type}!"
   reload: "&aReloaded successfully..."
+  usage_main: "&cUsage: /entitycatcher <give | giveall | reload | stats | collection>"
+  usage_give: "&cUsage: /entitycatcher give <player> <type> [amount]"
+  usage_giveall: "&cUsage: /entitycatcher giveall <type> [amount]"
+  usage_stats: "&cUsage: /entitycatcher stats [player]"
+  invalid_amount: "&cInvalid amount: {amount}"
+  players_only: "&cThis command can only be used by players."
 
 cooldown: "You must wait {time} seconds to {action} again."
 capture:
@@ -27,3 +33,17 @@ stats:
 
 collection:
   title: "&6&lCollection"
+  info_name: "&6&l{player}'s Collection"
+  info_lore:
+    - "&7Total captures: &f{captures}"
+    - "&7Total places: &f{places}"
+    - "&7Unique types: &f{unique}"
+    - ""
+    - "&7This is read-only. You cannot take items."
+  entry_name: "&e{type}"
+  entry_lore:
+    - "&7Type: &f{type}"
+    - "&7Name: &f{name}"
+    - "&7Catcher: &f{catcher}"
+    - "&7World: &f{world}"
+    - "&7Captured: &f{time}"

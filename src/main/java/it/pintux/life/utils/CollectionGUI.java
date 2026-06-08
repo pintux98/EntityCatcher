@@ -9,12 +9,14 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class CollectionGUI implements Listener {
@@ -28,64 +30,63 @@ public class CollectionGUI implements Listener {
 
     public void open(Player viewer, OfflinePlayer target) {
         String targetName = target.getName() != null ? target.getName() : "Unknown";
-        List<CooldownHandler.CaptureRecord> history = plugin.getCooldownHandler().getCaptureHistory(target.getUniqueId(), 45);
+        UUID uuid = target.getUniqueId();
+        List<CooldownHandler.CaptureRecord> history = plugin.getCooldownHandler().getCaptureHistory(uuid, 45);
         int size = Math.max(9, (int) (Math.ceil((history.size() + 9) / 9.0) * 9));
         if (size > 54) size = 54;
 
-        Inventory inv = Bukkit.createInventory(null, size, MessageData.getValue(MessageData.COLLECTION_TITLE, null, viewer));
+        CollectionHolder holder = new CollectionHolder();
+        Inventory inv = Bukkit.createInventory(holder, size, MessageData.getValue(MessageData.COLLECTION_TITLE, null, viewer));
+        holder.setInventory(inv);
 
         for (int i = 0; i < Math.min(history.size(), size - 9); i++) {
-            CooldownHandler.CaptureRecord record = history.get(i);
-            ItemStack icon = createEntryItem(record);
-            inv.setItem(i, icon);
+            inv.setItem(i, createEntryItem(history.get(i), viewer));
         }
 
-        ItemStack filler = createItem(Material.GRAY_STAINED_GLASS_PANE, " ");
+        ItemStack filler = createItem(Material.GRAY_STAINED_GLASS_PANE, " ", Collections.emptyList());
         for (int i = size - 9; i < size; i++) {
             inv.setItem(i, filler);
         }
 
-        ItemStack infoItem = createItem(Material.BOOK,
-                MessageData.applyColor("&6&l" + targetName + "'s Collection"),
-                "&7Total captures: &f" + plugin.getCooldownHandler().getCaptureCount(target.getUniqueId()),
-                "&7Total places: &f" + plugin.getCooldownHandler().getPlaceCount(target.getUniqueId()),
-                "&7Unique types: &f" + history.stream().map(r -> r.entityType).distinct().count(),
-                "",
-                "&7This is read-only. You cannot take items.");
-        inv.setItem(size - 5, infoItem);
+        long unique = history.stream().map(r -> r.entityType).distinct().count();
+        Map<String, Object> infoRepl = Map.of(
+                "{player}", targetName,
+                "{captures}", plugin.getCooldownHandler().getCaptureCount(uuid),
+                "{places}", plugin.getCooldownHandler().getPlaceCount(uuid),
+                "{unique}", unique);
+        String infoName = MessageData.getValueNoPrefix(MessageData.COLLECTION_INFO_NAME, infoRepl, viewer);
+        List<String> infoLore = MessageData.getList(MessageData.COLLECTION_INFO_LORE, infoRepl, viewer);
+        inv.setItem(size - 5, createItem(Material.BOOK, infoName, infoLore));
 
         viewer.openInventory(inv);
     }
 
-    private ItemStack createEntryItem(CooldownHandler.CaptureRecord record) {
+    private ItemStack createEntryItem(CooldownHandler.CaptureRecord record, Player viewer) {
         // Entity names are not Material names; use the matching spawn egg as the icon.
         Material mat = Material.matchMaterial(record.entityType + "_SPAWN_EGG");
         if (mat == null) {
             mat = Material.SPAWNER;
         }
 
-        List<String> lore = new ArrayList<>();
-        lore.add(MessageData.applyColor("&7Type: &f" + record.entityType));
-        if (record.entityName != null && !record.entityName.isEmpty()) {
-            lore.add(MessageData.applyColor("&7Name: &f" + record.entityName));
-        }
-        lore.add(MessageData.applyColor("&7Catcher: &f" + record.catcherType));
-        lore.add(MessageData.applyColor("&7World: &f" + record.world));
-        lore.add(MessageData.applyColor("&7Captured: &f" + record.getFormattedTime()));
+        String name = (record.entityName != null && !record.entityName.isEmpty()) ? record.entityName : "-";
+        Map<String, Object> repl = Map.of(
+                "{type}", record.entityType,
+                "{name}", name,
+                "{catcher}", record.catcherType,
+                "{world}", record.world != null ? record.world : "",
+                "{time}", record.getFormattedTime());
 
-        return createItem(mat, MessageData.applyColor("&e" + record.entityType), lore.toArray(new String[0]));
+        String displayName = MessageData.getValueNoPrefix(MessageData.COLLECTION_ENTRY_NAME, repl, viewer);
+        List<String> lore = MessageData.getList(MessageData.COLLECTION_ENTRY_LORE, repl, viewer);
+        return createItem(mat, displayName, lore);
     }
 
-    private ItemStack createItem(Material material, String displayName, String... loreLines) {
+    private ItemStack createItem(Material material, String displayName, List<String> loreLines) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(MessageData.applyColor(displayName));
-        if (loreLines.length > 0) {
-            List<String> lore = new ArrayList<>();
-            for (String line : loreLines) {
-                lore.add(MessageData.applyColor(line));
-            }
-            meta.setLore(lore);
+        if (!loreLines.isEmpty()) {
+            meta.setLore(loreLines);
         }
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
         item.setItemMeta(meta);
@@ -94,10 +95,23 @@ public class CollectionGUI implements Listener {
 
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
-        String title = event.getView().getTitle();
-        if (!title.contains("Collection")) {
-            return;
+        // Match by holder, not by title text, so a renamed/localized title still locks the GUI.
+        if (event.getInventory().getHolder() instanceof CollectionHolder) {
+            event.setCancelled(true);
         }
-        event.setCancelled(true);
+    }
+
+    /** Marker holder used to identify the read-only collection inventory. */
+    private static final class CollectionHolder implements InventoryHolder {
+        private Inventory inventory;
+
+        void setInventory(Inventory inventory) {
+            this.inventory = inventory;
+        }
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
     }
 }
