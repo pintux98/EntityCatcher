@@ -3,6 +3,7 @@ package it.pintux.life.cmds;
 import it.pintux.life.EntityCatcher;
 import it.pintux.life.utils.MessageData;
 import org.bukkit.Bukkit;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -129,9 +130,9 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
 
-                Player targetPlayer;
+                OfflinePlayer targetPlayer;
                 if (args.length >= 2) {
-                    targetPlayer = Bukkit.getPlayer(args[1]);
+                    targetPlayer = resolveOffline(args[1]);
                     if (targetPlayer == null) {
                         sender.sendMessage(MessageData.getValue(MessageData.COMMAND_PLAYER_NOT_FOUND));
                         return true;
@@ -144,11 +145,12 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                 }
 
                 UUID uuid = targetPlayer.getUniqueId();
+                Player onlineTarget = targetPlayer.isOnline() ? targetPlayer.getPlayer() : null;
                 int captures = plugin.getCooldownHandler().getCaptureCount(uuid);
                 int places = plugin.getCooldownHandler().getPlaceCount(uuid);
-                sender.sendMessage(MessageData.getValueNoPrefix(MessageData.STATS_HEADER, null, targetPlayer));
-                sender.sendMessage(MessageData.getValueNoPrefix(MessageData.STATS_CAPTURES, Map.of("{count}", captures), targetPlayer));
-                sender.sendMessage(MessageData.getValueNoPrefix(MessageData.STATS_PLACES, Map.of("{count}", places), targetPlayer));
+                sender.sendMessage(MessageData.getValueNoPrefix(MessageData.STATS_HEADER, null, onlineTarget));
+                sender.sendMessage(MessageData.getValueNoPrefix(MessageData.STATS_CAPTURES, Map.of("{count}", captures), onlineTarget));
+                sender.sendMessage(MessageData.getValueNoPrefix(MessageData.STATS_PLACES, Map.of("{count}", places), onlineTarget));
 
             } else if (args[0].equalsIgnoreCase("collection")) {
                 if (!(sender instanceof Player)) {
@@ -156,13 +158,13 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 Player viewer = (Player) sender;
-                Player targetPlayer;
+                OfflinePlayer targetPlayer;
                 if (args.length >= 2) {
                     if (!viewer.hasPermission("entitycatcher.collection.others")) {
                         viewer.sendMessage(MessageData.getValue(MessageData.NO_PEX));
                         return true;
                     }
-                    targetPlayer = Bukkit.getPlayer(args[1]);
+                    targetPlayer = resolveOffline(args[1]);
                     if (targetPlayer == null) {
                         viewer.sendMessage(MessageData.getValue(MessageData.COMMAND_PLAYER_NOT_FOUND));
                         return true;
@@ -179,6 +181,21 @@ public class CatcherCommand implements CommandExecutor, TabCompleter {
         }
 
         return false;
+    }
+
+    /**
+     * Resolves a name to an online player, or to an offline player that has joined
+     * before (data is keyed by UUID, so stats/collection work for offline players).
+     * Returns null for names that have never been seen.
+     */
+    @SuppressWarnings("deprecation")
+    private OfflinePlayer resolveOffline(String name) {
+        Player online = Bukkit.getPlayerExact(name);
+        if (online != null) {
+            return online;
+        }
+        OfflinePlayer offline = Bukkit.getOfflinePlayer(name);
+        return (offline.hasPlayedBefore() || offline.isOnline()) ? offline : null;
     }
 
     @Override

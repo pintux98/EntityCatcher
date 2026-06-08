@@ -1,5 +1,7 @@
 package it.pintux.life.catcher;
 
+import de.tr7zw.changeme.nbtapi.NBTContainer;
+import de.tr7zw.changeme.nbtapi.NBTEntity;
 import de.tr7zw.changeme.nbtapi.NBTItem;
 import io.papermc.paper.entity.Bucketable;
 import it.pintux.life.utils.CooldownHandler;
@@ -40,6 +42,10 @@ public class CatcherManager {
         if (bucketsSection == null) return;
         for (String bucketKey : bucketsSection.getKeys(false)) {
             ConfigurationSection bucketConfig = bucketsSection.getConfigurationSection(bucketKey);
+            if (bucketConfig == null) {
+                plugin.getLogger().warning("Skipping malformed catcher '" + bucketKey + "' (not a section).");
+                continue;
+            }
             String allowedTypes = bucketConfig.getString("capture.allowed_types", "ANYTHING");
             boolean captureCustomName = bucketConfig.getBoolean("capture_data.capture_custom_name", true);
             boolean captureHealth = bucketConfig.getBoolean("capture_data.capture_health", true);
@@ -70,33 +76,61 @@ public class CatcherManager {
     }
 
     private void registerRecipe(CatcherType catcherType) {
+        List<String> shape = catcherType.getShape();
+        if (shape == null || shape.size() != 3) {
+            plugin.getLogger().warning("Catcher '" + catcherType.getName() + "' has no valid 3-row recipe shape; skipping recipe.");
+            return;
+        }
+        ConfigurationSection ingredients = catcherType.getIngredients();
+        if (ingredients == null) {
+            plugin.getLogger().warning("Catcher '" + catcherType.getName() + "' has no recipe ingredients; skipping recipe.");
+            return;
+        }
+
         ItemStack item = catcherType.createEmptyCatcherItem();
         NamespacedKey key = new NamespacedKey(plugin, catcherType.getName().toLowerCase() + "_bucket");
         ShapedRecipe recipe = new ShapedRecipe(key, item);
-        recipe.shape(catcherType.getShape().get(0), catcherType.getShape().get(1), catcherType.getShape().get(2));
+        recipe.shape(shape.get(0), shape.get(1), shape.get(2));
 
-        for (String keyChar : catcherType.getIngredients().getKeys(false)) {
-            Material material = Material.getMaterial(catcherType.getIngredients().getString(keyChar));
+        Set<Character> defined = new HashSet<>();
+        for (String keyChar : ingredients.getKeys(false)) {
+            Material material = Material.getMaterial(ingredients.getString(keyChar));
             if (material != null) {
                 recipe.setIngredient(keyChar.charAt(0), material);
+                defined.add(keyChar.charAt(0));
             }
         }
+
+        // Bukkit rejects the recipe if any non-space char in the shape lacks an ingredient.
+        for (String row : shape) {
+            for (char c : row.toCharArray()) {
+                if (c != ' ' && !defined.contains(c)) {
+                    plugin.getLogger().warning("Catcher '" + catcherType.getName() + "' recipe references undefined ingredient '" + c + "'; skipping recipe.");
+                    return;
+                }
+            }
+        }
+
         if (plugin.getServer().getRecipe(key) != null) {
             plugin.getServer().removeRecipe(key);
         }
-        plugin.getServer().addRecipe(recipe);
+        try {
+            plugin.getServer().addRecipe(recipe);
+        } catch (IllegalStateException e) {
+            plugin.getLogger().warning("Failed to register recipe for catcher '" + catcherType.getName() + "': " + e.getMessage());
+        }
     }
 
     public CatcherType getBucketTypeFromItem(ItemStack item) {
-        if (item == null || item.getType() != Material.BUCKET) return null;
+        // Catcher items can be any material (configured per type), so identify them by
+        // their NBT tag, not by Material. Cheap pre-checks first to avoid building an
+        // NBTItem for every plain block/tool right-click.
+        if (item == null || item.getType().isAir() || !item.hasItemMeta()) return null;
 
         NBTItem nbtItem = new NBTItem(item);
-
         if (!nbtItem.hasKey("catcherType")) return null;
 
-        String bucketTypeName = nbtItem.getString("catcherType");
-
-        return catcherTypes.get(bucketTypeName);
+        return catcherTypes.get(nbtItem.getString("catcherType"));
     }
 
     public ItemStack getBucketItem(String bucketKey) {
@@ -124,7 +158,7 @@ public class CatcherManager {
             return;
         }
 
-        if (!canCaptureOrPlace(player, playerUUID, "capture")) return;
+        if (isOnCooldown(player, playerUUID, "capture")) return;
 
         if (!plugin.getProtectionManager().isProtected(player, entity.getLocation())) {
             player.sendMessage(MessageData.getValue(MessageData.CAPTURE_PROTECTION));
@@ -149,17 +183,31 @@ public class CatcherManager {
             return;
         }
 
+        String entityTypeName = entity.getType().toString();
+        String entityCustomName = entity.getCustomName();
+
         captureEntity(player, entity, bucket, catcherType);
 
+        // Cooldown is applied only after a successful capture, so failed attempts
+        // (wrong type, full catcher, missed chance) do not burn the cooldown.
+        applyCooldown(player, playerUUID, "capture");
         cooldownHandler.incrementCaptureCount(playerUUID);
         cooldownHandler.recordActionTime(playerUUID, "capture");
-        cooldownHandler.recordCapture(playerUUID, entity.getType().toString(), entity.getCustomName(), catcherType.getName(), player.getWorld().getName());
+        cooldownHandler.recordCapture(playerUUID, entityTypeName, entityCustomName, catcherType.getName(), player.getWorld().getName());
 
-        player.sendMessage(MessageData.getValue(MessageData.CAPTURE_CATCHED, Map.of("{entity_type}", entity.getType().toString()), player));
+        player.sendMessage(MessageData.getValue(MessageData.CAPTURE_CATCHED, Map.of("{entity_type}", entityTypeName), player));
     }
 
     public void handlePlace(Player player, ItemStack bucket, CatcherType catcherType) {
         UUID playerUUID = player.getUniqueId();
+
+        NBTItem nbtItem = new NBTItem(bucket);
+
+        // An empty catcher does nothing on right-click; check this first so it never
+        // sets a cooldown or runs protection lookups.
+        if (!nbtItem.getBoolean("hasCapture")) {
+            return;
+        }
 
         if (cooldownHandler.isActionTooRecent(playerUUID, "capture", ANTI_EXPLOIT_THRESHOLD_MS)) {
             player.sendMessage(MessageData.getValue(MessageData.COOLDOWN, Map.of("{time}", 2, "{action}", "place"), player));
@@ -172,95 +220,132 @@ public class CatcherManager {
             return;
         }
 
-        if (!canCaptureOrPlace(player, playerUUID, "place")) return;
+        if (isOnCooldown(player, playerUUID, "place")) return;
 
         if (!plugin.getProtectionManager().isProtected(player, player.getLocation())) {
             player.sendMessage(MessageData.getValue(MessageData.PLACE_PROTECTION));
             return;
         }
 
-        NBTItem nbtItem = new NBTItem(bucket);
-
-        if (!nbtItem.getBoolean("hasCapture")) {
-            return;
-        }
+        String entityTypeName = nbtItem.getString("capturedEntityType");
 
         placeEntity(player, bucket, catcherType);
+
+        applyCooldown(player, playerUUID, "place");
         cooldownHandler.incrementPlaceCount(playerUUID);
         cooldownHandler.recordActionTime(playerUUID, "place");
 
-        player.sendMessage(MessageData.getValue(MessageData.PLACE_PLACED, Map.of("{entity_type}", nbtItem.getString("capturedEntityType")), player));
+        player.sendMessage(MessageData.getValue(MessageData.PLACE_PLACED, Map.of("{entity_type}", entityTypeName), player));
     }
 
     public void captureEntity(Player player, Entity entity, ItemStack bucket, CatcherType catcherType) {
-        NBTItem nbtItem = new NBTItem(catcherType.createFullCatcherItem());
+        ItemStack item = catcherType.createFullCatcherItem();
 
-        nbtItem.setString("capturedEntityType", entity.getType().toString());
+        boolean isBaby = entity instanceof Ageable && !((Ageable) entity).isAdult();
+        String variant = readVariantName(entity);
 
-        if (catcherType.shouldCaptureCustomName() && entity.getCustomName() != null) {
-            nbtItem.setString("capturedEntityName", entity.getCustomName());
-        }
-
-        if (catcherType.shouldCaptureHealth() && entity instanceof Damageable) {
-            nbtItem.setDouble("capturedEntityHealth", ((Damageable) entity).getHealth());
-        }
-
-        if (catcherType.shouldCaptureVariant() && entity instanceof Sheep) {
-            nbtItem.setString("capturedColor", ((Sheep) entity).getColor().name());
-        }
-
-        if (catcherType.shouldCaptureArmor() && entity instanceof LivingEntity) {
-            org.bukkit.inventory.EntityEquipment equipment = ((LivingEntity) entity).getEquipment();
-            if (equipment != null) {
-                ItemStack[] armorContents = equipment.getArmorContents();
-                for (int i = 0; i < armorContents.length; i++) {
-                    nbtItem.setItemStack("armor_" + i, armorContents[i]);
-                }
-            }
-        }
-
-        if (catcherType.shouldCaptureEquipment() && entity instanceof LivingEntity) {
-            org.bukkit.inventory.EntityEquipment equipment = ((LivingEntity) entity).getEquipment();
-            if (equipment != null) {
-                ItemStack mainHand = equipment.getItemInMainHand();
-                ItemStack offHand = equipment.getItemInOffHand();
-                nbtItem.setItemStack("mainHand", mainHand);
-                nbtItem.setItemStack("offHand", offHand);
-            }
-        }
-
-        if (entity instanceof Ageable) {
-            nbtItem.setBoolean("isBaby", !((Ageable) entity).isAdult());
-        }
-
-        if (entity instanceof Cat) {
-            nbtItem.setString("variant", ((Cat) entity).getCatType().name());
-        } else if (entity instanceof Llama) {
-            nbtItem.setString("variant", ((Llama) entity).getColor().name());
-        } else if (entity instanceof Horse) {
-            nbtItem.setString("variant", ((Horse) entity).getColor().name());
-        }
-
-        nbtItem.setBoolean("hasCapture", true);
-
-        ItemStack item = nbtItem.getItem();
+        // Resolve the dynamic display name/lore and apply the meta BEFORE writing any
+        // NBT-API keys. Bukkit's setItemMeta rebuilds the item tag from the meta, which
+        // would otherwise wipe custom NBT keys (catcherType, hasCapture, snapshot, ...).
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(MessageData.applyColor(catcherType.getDisplayName()));
         if (!catcherType.getCaptureLore().isEmpty()) {
             List<String> lore = new ArrayList<>();
             catcherType.getCaptureLore().forEach(s -> lore.add(MessageData.applyColor(s).replace("{name}", entity.getName())
-                    .replace("{type}", entity.getType().toString()).replace("{age}", nbtItem.getBoolean("isBaby") ? "Baby" : "Adult")
-                    .replace("{variant}", nbtItem.getString("variant"))));
+                    .replace("{type}", entity.getType().toString()).replace("{age}", isBaby ? "Baby" : "Adult")
+                    .replace("{variant}", variant != null ? variant : "")));
             meta.setLore(lore);
         }
-
         item.setItemMeta(meta);
+
+        // All NBT-API writes happen last.
+        NBTItem nbtItem = new NBTItem(item);
+        nbtItem.setString("catcherType", catcherType.getName());
+        nbtItem.setString("capturedEntityType", entity.getType().toString());
+
+        // Store a full NBT snapshot of the entity so every attribute (tamed owner,
+        // profession, anger, effects, equipment, variant, ...) survives the round-trip.
+        try {
+            NBTContainer snapshot = new NBTContainer(new NBTEntity(entity).toString());
+            stripVolatileKeys(snapshot);
+            // capture_data flags act as opt-out filters on the snapshot.
+            if (!catcherType.shouldCaptureCustomName()) {
+                snapshot.removeKey("CustomName");
+                snapshot.removeKey("CustomNameVisible");
+            }
+            if (!catcherType.shouldCaptureHealth()) {
+                snapshot.removeKey("Health");
+            }
+            if (!catcherType.shouldCaptureArmor()) {
+                snapshot.removeKey("ArmorItems");
+                snapshot.removeKey("ArmorDropChances");
+            }
+            if (!catcherType.shouldCaptureEquipment()) {
+                snapshot.removeKey("HandItems");
+                snapshot.removeKey("HandDropChances");
+            }
+            if (!catcherType.shouldCaptureVariant()) {
+                snapshot.removeKey("Color");
+                snapshot.removeKey("variant");
+                snapshot.removeKey("Variant");
+            }
+            nbtItem.setString("entitySnapshot", snapshot.toString());
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.WARNING, "Failed to snapshot entity " + entity.getType(), t);
+        }
+
+        // Lightweight fields kept purely for lore placeholders.
+        nbtItem.setBoolean("isBaby", isBaby);
+        if (variant != null) {
+            nbtItem.setString("variant", variant);
+        }
+        nbtItem.setBoolean("hasCapture", true);
+
+        ItemStack finalItem = nbtItem.getItem();
         entity.remove();
-        player.getInventory().remove(bucket);
-        player.getInventory().setItemInMainHand(item);
+        consumeAndGive(player, bucket, finalItem);
+    }
+
+    /**
+     * Removes positional/identity keys that must not be carried onto a freshly spawned
+     * entity, otherwise it would teleport, clash UUIDs, or fail to spawn.
+     */
+    private void stripVolatileKeys(NBTContainer nbt) {
+        for (String key : new String[]{"UUID", "UUIDMost", "UUIDLeast", "Pos", "Motion", "Rotation",
+                "Leash", "Leashed", "FallDistance", "Air", "PortalCooldown", "Dimension",
+                "WorldUUIDMost", "WorldUUIDLeast", "Passengers"}) {
+            nbt.removeKey(key);
+        }
+    }
+
+    private String readVariantName(Entity entity) {
+        if (entity instanceof Cat) return ((Cat) entity).getCatType().name();
+        if (entity instanceof Llama) return ((Llama) entity).getColor().name();
+        if (entity instanceof Horse) return ((Horse) entity).getColor().name();
+        if (entity instanceof Sheep) return ((Sheep) entity).getColor().name();
+        return null;
+    }
+
+    /**
+     * Consumes exactly one catcher from the held stack and hands back the result item,
+     * so stacked catchers are never lost or duplicated.
+     */
+    private void consumeAndGive(Player player, ItemStack bucket, ItemStack result) {
+        if (bucket.getAmount() > 1) {
+            bucket.setAmount(bucket.getAmount() - 1);
+            Map<Integer, ItemStack> leftover = player.getInventory().addItem(result);
+            leftover.values().forEach(left -> player.getWorld().dropItemNaturally(player.getLocation(), left));
+        } else {
+            player.getInventory().setItemInMainHand(result);
+        }
     }
 
     private boolean isAllowedEntityType(Entity entity, String allowedTypes) {
+        // Never allow players, armor stands, or non-living entities (item frames,
+        // dropped items, etc.) to be captured.
+        if (!(entity instanceof LivingEntity) || entity instanceof Player || entity instanceof ArmorStand) {
+            return false;
+        }
         if ("ANIMAL".equalsIgnoreCase(allowedTypes)) {
             return entity instanceof Animals || entity instanceof Bucketable;
         } else if ("MOB".equalsIgnoreCase(allowedTypes)) {
@@ -291,79 +376,39 @@ public class CatcherManager {
 
         Entity spawnedEntity = player.getWorld().spawnEntity(player.getLocation(), entityType);
 
-        if (spawnedEntity instanceof LivingEntity) {
-            LivingEntity livingEntity = (LivingEntity) spawnedEntity;
-
-            if (catcherType.shouldRemoveAI()) {
-                livingEntity.setAI(false);
-            }
-
-            if (catcherType.shouldSetInvisible()) {
-                livingEntity.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 1));
-            }
-
-            if (catcherType.shouldSetOnFire()) {
-                livingEntity.setFireTicks(100);
-            }
-
-            if (catcherType.shouldSetGlowing()) {
-                livingEntity.setGlowing(true);
-            }
-
-            if (catcherType.shouldBeInvincible()) {
-                livingEntity.setInvulnerable(true);
-            }
-
-            if (catcherType.shouldCaptureCustomName() && nbtItem.hasKey("capturedEntityName")) {
-                livingEntity.setCustomName(nbtItem.getString("capturedEntityName"));
-            }
-
-            if (catcherType.shouldCaptureHealth() && nbtItem.hasKey("capturedEntityHealth")) {
-                livingEntity.setHealth(nbtItem.getDouble("capturedEntityHealth"));
-            }
-
-            if (catcherType.shouldCaptureVariant() && spawnedEntity instanceof Sheep && nbtItem.hasKey("capturedColor")) {
-                ((Sheep) livingEntity).setColor(DyeColor.valueOf(nbtItem.getString("capturedColor")));
-            }
-
-            if (catcherType.shouldCaptureArmor()) {
-                org.bukkit.inventory.EntityEquipment equipment = livingEntity.getEquipment();
-                if (equipment != null) {
-                    ItemStack[] armorContents = new ItemStack[4];
-                    for (int i = 0; i < 4; i++) {
-                        armorContents[i] = nbtItem.getItemStack("armor_" + i);
-                    }
-                    equipment.setArmorContents(armorContents);
-                }
-            }
-
-            if (catcherType.shouldCaptureEquipment()) {
-                org.bukkit.inventory.EntityEquipment equipment = livingEntity.getEquipment();
-                if (equipment != null) {
-                    equipment.setItemInMainHand(nbtItem.getItemStack("mainHand"));
-                    equipment.setItemInOffHand(nbtItem.getItemStack("offHand"));
-                }
-            }
-
-            if (spawnedEntity instanceof Ageable && nbtItem.hasKey("isBaby")) {
-                boolean isBaby = nbtItem.getBoolean("isBaby");
-                if (isBaby) {
-                    ((Ageable) livingEntity).setBaby();
-                } else {
-                    ((Ageable) livingEntity).setAdult();
-                }
-            }
-
-            if (spawnedEntity instanceof Cat && nbtItem.hasKey("variant")) {
-                ((Cat) livingEntity).setCatType(Cat.Type.valueOf(nbtItem.getString("variant")));
-            } else if (spawnedEntity instanceof Llama && nbtItem.hasKey("variant")) {
-                ((Llama) livingEntity).setColor(Llama.Color.valueOf(nbtItem.getString("variant")));
-            } else if (spawnedEntity instanceof Horse && nbtItem.hasKey("variant")) {
-                ((Horse) livingEntity).setColor(Horse.Color.valueOf(nbtItem.getString("variant")));
+        // Restore the full snapshot. Health/attributes come back together, so there is
+        // no separate clamp needed. Wrapped so a malformed snapshot can never abort the
+        // placement (and leave the entity spawned with the bucket un-consumed).
+        if (nbtItem.hasKey("entitySnapshot")) {
+            try {
+                NBTContainer snapshot = new NBTContainer(nbtItem.getString("entitySnapshot"));
+                stripVolatileKeys(snapshot);
+                new NBTEntity(spawnedEntity).mergeCompound(snapshot);
+            } catch (Throwable t) {
+                plugin.getLogger().log(Level.WARNING, "Failed to restore entity snapshot for " + entityType, t);
             }
         }
 
-        player.getInventory().setItemInMainHand(catcherType.createEmptyCatcherItem());
+        if (spawnedEntity instanceof LivingEntity) {
+            LivingEntity livingEntity = (LivingEntity) spawnedEntity;
+            if (catcherType.shouldRemoveAI()) {
+                livingEntity.setAI(false);
+            }
+            if (catcherType.shouldSetInvisible()) {
+                livingEntity.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 1, false, false));
+            }
+            if (catcherType.shouldSetOnFire()) {
+                livingEntity.setFireTicks(100);
+            }
+            if (catcherType.shouldSetGlowing()) {
+                livingEntity.setGlowing(true);
+            }
+            if (catcherType.shouldBeInvincible()) {
+                livingEntity.setInvulnerable(true);
+            }
+        }
+
+        consumeAndGive(player, bucket, catcherType.createEmptyCatcherItem());
     }
 
     public long getCooldownFromPermissions(Player player, String permissionBase, String action) {
@@ -385,19 +430,34 @@ public class CatcherManager {
         return maxCooldown > 0 ? maxCooldown * 60 * 1000L : 0;
     }
 
-    public boolean canCaptureOrPlace(Player player, UUID playerUUID, String action) {
+    /**
+     * Returns true (and messages the player) if the action is still on cooldown.
+     * Does not mutate any state.
+     */
+    public boolean isOnCooldown(Player player, UUID playerUUID, String action) {
         if (player.hasPermission("entitycatcher.bypass.cooldown")) {
-            return true;
-        }
-        long cooldownDuration = getCooldownFromPermissions(player, "entitycatcher", action);
-        long remainingCooldown = cooldownHandler.getCooldown(playerUUID, action);
-
-        if (remainingCooldown > 0) {
-            player.sendMessage(MessageData.getValue(MessageData.COOLDOWN, Map.of("{time}", (remainingCooldown / 1000), "{action}", action), player));
             return false;
         }
-        cooldownHandler.setCooldown(playerUUID, action.equals("capture") ? cooldownDuration : 0, action.equals("place") ? cooldownDuration : 0);
-        return true;
+        long remainingCooldown = cooldownHandler.getCooldown(playerUUID, action);
+        if (remainingCooldown > 0) {
+            player.sendMessage(MessageData.getValue(MessageData.COOLDOWN, Map.of("{time}", (remainingCooldown / 1000), "{action}", action), player));
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Starts the cooldown for the given action. Called only after a successful
+     * capture/place so failed attempts never trigger a cooldown.
+     */
+    public void applyCooldown(Player player, UUID playerUUID, String action) {
+        if (player.hasPermission("entitycatcher.bypass.cooldown")) {
+            return;
+        }
+        long cooldownDuration = getCooldownFromPermissions(player, "entitycatcher", action);
+        if (cooldownDuration > 0) {
+            cooldownHandler.setCooldown(playerUUID, action, cooldownDuration);
+        }
     }
 
     public Map<String, CatcherType> getBucketTypes() {

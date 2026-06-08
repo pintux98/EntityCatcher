@@ -1,6 +1,7 @@
 package it.pintux.life.utils;
 
 import com.zaxxer.hikari.HikariDataSource;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.*;
@@ -19,6 +20,7 @@ public class CooldownHandler {
     private final String tableName = "cooldowns";
     private final String historyTable = "capture_history";
     private HikariDataSource dataSource;
+    private boolean sqlite;
     private final JavaPlugin plugin;
 
     public CooldownHandler(JavaPlugin plugin) {
@@ -32,12 +34,31 @@ public class CooldownHandler {
             if (dataSource != null) closeConnection();
             databaseManager.setup();
             dataSource = databaseManager.getDataSource();
+            sqlite = databaseManager.isSQLite();
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Failed to setup database", e);
         }
         if (dataSource != null) {
             createTable();
             createHistoryTable();
+        }
+    }
+
+    /**
+     * Returns the dialect-specific upsert clause. SQLite and MySQL both accept bound
+     * parameters in the update assignments, so the parameter list stays identical.
+     */
+    private String onConflict(String conflictColumn, String assignments) {
+        return sqlite
+                ? " ON CONFLICT(" + conflictColumn + ") DO UPDATE SET " + assignments
+                : " ON DUPLICATE KEY UPDATE " + assignments;
+    }
+
+    private void async(Runnable runnable) {
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, runnable);
+        } else {
+            runnable.run();
         }
     }
 
@@ -57,26 +78,26 @@ public class CooldownHandler {
         }
     }
 
-    public void setCooldown(UUID playerUUID, long captureCooldownMillis, long placeCooldownMillis) {
+    /**
+     * Sets the cooldown end-time for a single action ("capture" or "place"). Only the
+     * targeted column is touched, so setting a capture cooldown never clears a pending
+     * place cooldown (and vice versa).
+     */
+    public void setCooldown(UUID playerUUID, String action, long durationMillis) {
         if (dataSource == null) {
             return;
         }
-        long currentTime = System.currentTimeMillis();
-        long captureCooldownEndTime = currentTime + captureCooldownMillis;
-        long placeCooldownEndTime = currentTime + placeCooldownMillis;
-
-        String sql = "INSERT INTO " + tableName + " (player_uuid, capture_cooldown, place_cooldown) "
-                     + "VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE capture_cooldown=?, place_cooldown=?";
-
+        String column = "capture".equals(action) ? "capture_cooldown" : "place_cooldown";
+        long endTime = System.currentTimeMillis() + durationMillis;
+        String sql = "INSERT INTO " + tableName + " (player_uuid, " + column + ") VALUES (?, ?)"
+                     + onConflict("player_uuid", column + "=?");
         try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, playerUUID.toString());
-            pstmt.setLong(2, captureCooldownEndTime);
-            pstmt.setLong(3, placeCooldownEndTime);
-            pstmt.setLong(4, captureCooldownEndTime);
-            pstmt.setLong(5, placeCooldownEndTime);
+            pstmt.setLong(2, endTime);
+            pstmt.setLong(3, endTime);
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to set cooldown for {0}", playerUUID);
+            plugin.getLogger().log(Level.WARNING, "Failed to set " + action + " cooldown for {0}", playerUUID);
         }
     }
 
@@ -126,15 +147,16 @@ public class CooldownHandler {
 
     /**
      * Records the current time as the last capture/place action for cross-server anti-exploit.
+     * Kept synchronous: the place handler reads this immediately after a capture.
      */
     public void recordActionTime(UUID playerUUID, String action) {
         if (dataSource == null) {
             return;
         }
         String column = "last_" + action + "_time";
-        String sql = "INSERT INTO " + tableName + " (player_uuid, " + column + ") "
-                     + "VALUES (?, ?) ON DUPLICATE KEY UPDATE " + column + "=?";
         long now = System.currentTimeMillis();
+        String sql = "INSERT INTO " + tableName + " (player_uuid, " + column + ") VALUES (?, ?)"
+                     + onConflict("player_uuid", column + "=?");
         try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, playerUUID.toString());
             pstmt.setLong(2, now);
@@ -169,61 +191,54 @@ public class CooldownHandler {
     }
 
     public void incrementCaptureCount(UUID playerUUID) {
-        if (dataSource == null) {
-            return;
-        }
-        String sql = "UPDATE " + tableName + " SET capture_count = capture_count + 1 WHERE player_uuid = ?";
-        try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, playerUUID.toString());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to increment capture count for {0}", playerUUID);
-        }
+        incrementCount(playerUUID, "capture_count");
     }
 
     public void incrementPlaceCount(UUID playerUUID) {
+        incrementCount(playerUUID, "place_count");
+    }
+
+    /**
+     * Upsert so the counter still increments for players who have no row yet
+     * (e.g. those bypassing cooldowns). Runs off the main thread.
+     */
+    private void incrementCount(UUID playerUUID, String column) {
         if (dataSource == null) {
             return;
         }
-        String sql = "UPDATE " + tableName + " SET place_count = place_count + 1 WHERE player_uuid = ?";
-        try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, playerUUID.toString());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to increment place count for {0}", playerUUID);
-        }
+        String sql = "INSERT INTO " + tableName + " (player_uuid, " + column + ") VALUES (?, 1)"
+                     + onConflict("player_uuid", column + " = " + column + " + 1");
+        async(() -> {
+            try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, playerUUID.toString());
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to increment " + column + " for {0}", playerUUID);
+            }
+        });
     }
 
     public int getCaptureCount(UUID playerUUID) {
-        if (dataSource == null) {
-            return 0;
-        }
-        String sql = "SELECT capture_count FROM " + tableName + " WHERE player_uuid = ?";
-        try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, playerUUID.toString());
-            ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) {
-                return rs.getInt("capture_count");
-            }
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to get capture count for {0}", playerUUID);
-        }
-        return 0;
+        return getCount(playerUUID, "capture_count");
     }
 
     public int getPlaceCount(UUID playerUUID) {
+        return getCount(playerUUID, "place_count");
+    }
+
+    private int getCount(UUID playerUUID, String column) {
         if (dataSource == null) {
             return 0;
         }
-        String sql = "SELECT place_count FROM " + tableName + " WHERE player_uuid = ?";
+        String sql = "SELECT " + column + " FROM " + tableName + " WHERE player_uuid = ?";
         try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, playerUUID.toString());
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
-                return rs.getInt("place_count");
+                return rs.getInt(column);
             }
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to get place count for {0}", playerUUID);
+            plugin.getLogger().log(Level.WARNING, "Failed to get " + column + " for {0}", playerUUID);
         }
         return 0;
     }
@@ -237,17 +252,22 @@ public class CooldownHandler {
     }
 
     private void createHistoryTable() {
+        String idColumn = sqlite ? "id INTEGER PRIMARY KEY AUTOINCREMENT, " : "id INT AUTO_INCREMENT PRIMARY KEY, ";
+        String inlineIndex = sqlite ? "" : ", INDEX idx_player (player_uuid)";
         String sql = "CREATE TABLE IF NOT EXISTS " + historyTable + " ("
-                     + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                     + idColumn
                      + "player_uuid VARCHAR(36) NOT NULL, "
                      + "entity_type VARCHAR(64) NOT NULL, "
                      + "entity_name VARCHAR(256), "
                      + "catcher_type VARCHAR(64) NOT NULL, "
                      + "world VARCHAR(64), "
-                     + "captured_at BIGINT NOT NULL, "
-                     + "INDEX idx_player (player_uuid))";
+                     + "captured_at BIGINT NOT NULL"
+                     + inlineIndex + ")";
         try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
+            if (sqlite) {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_player ON " + historyTable + " (player_uuid)");
+            }
         } catch (SQLException e) {
             plugin.getLogger().log(Level.WARNING, "Failed to create capture_history table", e);
         }
@@ -256,17 +276,21 @@ public class CooldownHandler {
     public void recordCapture(UUID playerUUID, String entityType, String entityName, String catcherType, String world) {
         if (dataSource == null) return;
         String sql = "INSERT INTO " + historyTable + " (player_uuid, entity_type, entity_name, catcher_type, world, captured_at) VALUES (?, ?, ?, ?, ?, ?)";
-        try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, playerUUID.toString());
-            pstmt.setString(2, entityType);
-            pstmt.setString(3, entityName != null ? entityName : "");
-            pstmt.setString(4, catcherType);
-            pstmt.setString(5, world);
-            pstmt.setLong(6, System.currentTimeMillis());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to record capture history for {0}", playerUUID);
-        }
+        long now = System.currentTimeMillis();
+        String safeName = entityName != null ? entityName : "";
+        async(() -> {
+            try (Connection conn = dataSource.getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, playerUUID.toString());
+                pstmt.setString(2, entityType);
+                pstmt.setString(3, safeName);
+                pstmt.setString(4, catcherType);
+                pstmt.setString(5, world);
+                pstmt.setLong(6, now);
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to record capture history for {0}", playerUUID);
+            }
+        });
     }
 
     public List<CaptureRecord> getCaptureHistory(UUID playerUUID, int limit) {

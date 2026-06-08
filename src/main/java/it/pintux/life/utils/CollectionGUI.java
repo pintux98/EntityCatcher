@@ -3,6 +3,7 @@ package it.pintux.life.utils;
 import it.pintux.life.EntityCatcher;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -25,7 +26,8 @@ public class CollectionGUI implements Listener {
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
     }
 
-    public void open(Player viewer, Player target) {
+    public void open(Player viewer, OfflinePlayer target) {
+        String targetName = target.getName() != null ? target.getName() : "Unknown";
         List<CooldownHandler.CaptureRecord> history = plugin.getCooldownHandler().getCaptureHistory(target.getUniqueId(), 45);
         int size = Math.max(9, (int) (Math.ceil((history.size() + 9) / 9.0) * 9));
         if (size > 54) size = 54;
@@ -44,7 +46,7 @@ public class CollectionGUI implements Listener {
         }
 
         ItemStack infoItem = createItem(Material.BOOK,
-                MessageData.applyColor("&6&l" + target.getName() + "'s Collection"),
+                MessageData.applyColor("&6&l" + targetName + "'s Collection"),
                 "&7Total captures: &f" + plugin.getCooldownHandler().getCaptureCount(target.getUniqueId()),
                 "&7Total places: &f" + plugin.getCooldownHandler().getPlaceCount(target.getUniqueId()),
                 "&7Unique types: &f" + history.stream().map(r -> r.entityType).distinct().count(),
@@ -56,10 +58,10 @@ public class CollectionGUI implements Listener {
     }
 
     private ItemStack createEntryItem(CooldownHandler.CaptureRecord record) {
-        Material mat = Material.SPAWNER;
-        try {
-            mat = Material.valueOf(record.entityType);
-        } catch (IllegalArgumentException ignored) {
+        // Entity names are not Material names; use the matching spawn egg as the icon.
+        Material mat = Material.matchMaterial(record.entityType + "_SPAWN_EGG");
+        if (mat == null) {
+            mat = Material.SPAWNER;
         }
 
         List<String> lore = new ArrayList<>();

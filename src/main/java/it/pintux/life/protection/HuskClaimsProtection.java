@@ -10,9 +10,15 @@ import org.bukkit.entity.Player;
 public class HuskClaimsProtection implements CatcherProtection {
     @Override
     public boolean isProtected(Player player, Location location) {
-        OnlineUser user = HuskClaimsAPI.getInstance().getOnlineUser(player.getUniqueId());
-        Position position = user.getPosition();
-        return HuskClaimsAPI.getInstance().isOperationAllowed(user, OperationType.ENTITY_INTERACT, position) ||
-               HuskClaimsAPI.getInstance().isOperationAllowed(user, OperationType.BLOCK_PLACE, position);
+        if (location.getWorld() == null) {
+            return true;
+        }
+        HuskClaimsAPI api = HuskClaimsAPI.getInstance();
+        OnlineUser user = api.getOnlineUser(player.getUniqueId());
+        // Check at the actual capture/place location, not the player's current position.
+        Position position = api.getPosition(location.getX(), location.getY(), location.getZ(),
+                location.getWorld().getName());
+        return api.isOperationAllowed(user, OperationType.ENTITY_INTERACT, position) ||
+               api.isOperationAllowed(user, OperationType.BLOCK_PLACE, position);
     }
 }

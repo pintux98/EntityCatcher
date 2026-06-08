@@ -49,6 +49,7 @@ dependencies {
     compileOnly 'me.clip:placeholderapi:2.11.6'
     implementation 'de.tr7zw:item-nbt-api:2.15.7'
     implementation 'com.zaxxer:HikariCP:6.2.1'
+    implementation 'org.xerial:sqlite-jdbc:3.46.1.3'
     compileOnly 'com.github.GriefPrevention:GriefPrevention:17.0.0'
     compileOnly 'com.sk89q.worldguard:worldguard-bukkit:7.0.9'
     compileOnly 'net.william278.huskclaims:huskclaims-bukkit:1.4'
@@ -90,7 +91,16 @@ processResources {
 
 shadowJar {
     relocate("de.tr7zw.changeme.nbtapi", "it.pintux.life.nbtapi")
-    minimize()
+    // Keep the whole SQLite driver: it is loaded via ServiceLoader/reflection, so
+    // minimize() would otherwise strip its classes and META-INF/services.
+    minimize {
+        exclude(dependency('org.xerial:sqlite-jdbc:.*'))
+    }
     archiveClassifier = null
-    destinationDirectory.set("C:\\Users\\pintu\\Desktop\\Server\\Java-Bedrock-Server\\lobby\\plugins" as File)
+    // Only copy into the local test server when that path actually exists,
+    // so the build still works on other machines.
+    def serverPlugins = file('C:\\Users\\pintu\\Desktop\\Server\\Java-Bedrock-Server\\lobby\\plugins')
+    if (serverPlugins.exists()) {
+        destinationDirectory.set(serverPlugins)
+    }
 }

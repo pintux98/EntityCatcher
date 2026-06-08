@@ -1,5 +1,7 @@
 database:
-  type: mysql
+  # 'sqlite' = zero setup, stored as data.db in this plugin's folder (recommended for single servers).
+  # 'mysql'  = shared/cross-server; fill in the connection details below.
+  type: sqlite
   mysql:
     host: localhost
     port: 3306

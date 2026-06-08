@@ -74,7 +74,9 @@ public final class EntityCatcher extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        cooldownHandler.closeConnection();
+        if (cooldownHandler != null) {
+            cooldownHandler.closeConnection();
+        }
     }
 
     public void reloadData() {
